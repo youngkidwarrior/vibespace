@@ -380,6 +380,8 @@ let union_RestoreProfileVersionResult: ref<GraphQLUnionType.t> = Obj.magic({"con
 let get_RestoreProfileVersionResult = () => union_RestoreProfileVersionResult.contents
 let union_SaveManualProfileVersionResult: ref<GraphQLUnionType.t> = Obj.magic({"contents": null})
 let get_SaveManualProfileVersionResult = () => union_SaveManualProfileVersionResult.contents
+let union_StartAgentEditResult: ref<GraphQLUnionType.t> = Obj.magic({"contents": null})
+let get_StartAgentEditResult = () => union_StartAgentEditResult.contents
 let union_SubmitAgentEditResult: ref<GraphQLUnionType.t> = Obj.magic({"contents": null})
 let get_SubmitAgentEditResult = () => union_SubmitAgentEditResult.contents
 
@@ -442,6 +444,12 @@ let union_SaveManualProfileVersionResult_resolveType = (
   switch v {
   | SaveManualProfileVersionSucceeded(_) => "ProfileVersionMutationSucceeded"
   | SaveManualProfileVersionFailed(_) => "ProfileVersionMutationFailed"
+  }
+
+let union_StartAgentEditResult_resolveType = (v: BackendSchema.startAgentEditResult) =>
+  switch v {
+  | StartAgentEditSucceeded(_) => "ProfileEditSessionMutationSucceeded"
+  | StartAgentEditFailed(_) => "ProfileEditSessionMutationFailed"
   }
 
 let union_SubmitAgentEditResult_resolveType = (v: BackendSchema.submitAgentEditResult) =>
@@ -1289,6 +1297,24 @@ t_Mutation.contents = GraphQLObjectType.make({
             ~ctx,
             ~input=args["input"]->applyConversionToInputObject(
               input_SaveManualProfileVersionInput_conversionInstructions,
+            ),
+          )
+        }),
+      },
+      "startAgentEdit": {
+        typ: get_StartAgentEditResult()->GraphQLUnionType.toGraphQLType->nonNull,
+        description: "Starts an agent edit and returns the initial edit session immediately for polling.",
+        deprecationReason: ?None,
+        args: {
+          "input": {typ: get_SubmitAgentEditInput()->GraphQLInputObjectType.toGraphQLType->nonNull},
+        }->makeArgs,
+        resolve: makeResolveFn((src, args, ctx, info) => {
+          let src = typeUnwrapper(src)
+          BackendSchema.startAgentEdit(
+            src,
+            ~ctx,
+            ~input=args["input"]->applyConversionToInputObject(
+              input_SubmitAgentEditInput_conversionInstructions,
             ),
           )
         }),
@@ -3418,6 +3444,12 @@ union_SaveManualProfileVersionResult.contents = GraphQLUnionType.make({
     union_SaveManualProfileVersionResult_resolveType,
   ),
 })
+union_StartAgentEditResult.contents = GraphQLUnionType.make({
+  name: "StartAgentEditResult",
+  description: ?None,
+  types: () => [get_ProfileEditSessionMutationFailed(), get_ProfileEditSessionMutationSucceeded()],
+  resolveType: GraphQLUnionType.makeResolveUnionTypeFn(union_StartAgentEditResult_resolveType),
+})
 union_SubmitAgentEditResult.contents = GraphQLUnionType.make({
   name: "SubmitAgentEditResult",
   description: ?None,
@@ -3473,6 +3505,7 @@ let schema = GraphQLSchemaType.make({
     get_DisableUserResult()->GraphQLUnionType.toGraphQLType,
     get_AdminCreateInviteResult()->GraphQLUnionType.toGraphQLType,
     get_CancelProfileEditSessionResult()->GraphQLUnionType.toGraphQLType,
+    get_StartAgentEditResult()->GraphQLUnionType.toGraphQLType,
     get_SaveManualProfileVersionResult()->GraphQLUnionType.toGraphQLType,
     get_AdminCreateSeedUserResult()->GraphQLUnionType.toGraphQLType,
     get_RestoreProfileVersionResult()->GraphQLUnionType.toGraphQLType,

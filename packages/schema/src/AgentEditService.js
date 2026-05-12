@@ -389,6 +389,26 @@ async function updateSessionFailure(databaseUrl, sessionId, { summary, warnings,
   );
 }
 
+async function updateSessionProgress(databaseUrl, sessionId, progressPhase) {
+  if (!sessionId) return undefined;
+
+  return await withClient(databaseUrl, async (client) =>
+    await queryOne(
+      client,
+      `
+        UPDATE vibespace.profile_edit_sessions
+        SET
+          status = 'running',
+          progress_phase = $2,
+          updated_at = now()
+        WHERE id = $1
+        RETURNING ${editSessionSelect}
+      `,
+      [sessionId, progressPhase],
+    )
+  );
+}
+
 async function persistAppliedPatch(databaseUrl, input, state, patch, providerConversationId, model) {
   return await withClient(databaseUrl, async (client) => {
     await client.query("BEGIN");
@@ -642,6 +662,14 @@ export async function submitAgentEdit(input) {
     return serverFailure(state.error);
   }
 
+  return await runAgentEdit({ ...input, prompt }, state);
+}
+
+async function runAgentEdit(input, state) {
+  const databaseUrl = input?.databaseUrl || "";
+  const prompt = String(input?.prompt || "").trim();
+
+  const apiKey = process.env.OPENAI_API_KEY || "";
   const mode = input?.mode === "reasoning" ? "reasoning" : "fast";
   const model = modelForMode(mode);
   const reasoningEffort = reasoningEffortForMode(mode);
@@ -656,6 +684,7 @@ export async function submitAgentEdit(input) {
       input,
     });
     providerConversationId = providerResult.providerConversationId;
+    await updateSessionProgress(databaseUrl, state.session.id, "validating");
     const validationMessage = await validateProfilePatch(providerResult.patch, {
       currentHtml: state.currentVersion.html,
     });
@@ -675,6 +704,7 @@ export async function submitAgentEdit(input) {
       });
     }
 
+    await updateSessionProgress(databaseUrl, state.session.id, "applying");
     const persisted = await persistAppliedPatch(
       databaseUrl,
       { ...input, prompt },
@@ -708,4 +738,51 @@ export async function submitAgentEdit(input) {
       providerConversationId,
     });
   }
+}
+
+export async function startAgentEdit(input) {
+  const prompt = String(input?.prompt || "").trim();
+  if (!prompt) {
+    return serverFailure("Prompt is required.", {
+      summary: "Agent edit was not submitted.",
+    });
+  }
+
+  const databaseUrl = input?.databaseUrl || "";
+  if (!databaseUrl) {
+    return serverFailure("Assistant changes require a database-backed profile.");
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY || "";
+  if (!apiKey) {
+    return serverFailure("OPENAI_API_KEY is not configured for the GraphQL server.");
+  }
+
+  let state;
+  try {
+    state = await createSessionAndLoadSource(databaseUrl, {
+      ...input,
+      prompt,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to start assistant edit.";
+    return serverFailure(message);
+  }
+
+  if (state?.error) {
+    return serverFailure(state.error);
+  }
+
+  void runAgentEdit({ ...input, prompt }, state).catch(() => undefined);
+
+  return {
+    ok: true,
+    summary: "Agent edit started.",
+    warnings: [],
+    validationErrors: [],
+    error: undefined,
+    providerConversationId: undefined,
+    session: state.session,
+    version: undefined,
+  };
 }

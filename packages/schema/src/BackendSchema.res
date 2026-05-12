@@ -537,6 +537,11 @@ type submitAgentEditResult =
   | SubmitAgentEditFailed(profileEditSessionMutationFailed)
 
 @gql.union
+type startAgentEditResult =
+  | StartAgentEditSucceeded(profileEditSessionMutationSucceeded)
+  | StartAgentEditFailed(profileEditSessionMutationFailed)
+
+@gql.union
 type cancelProfileEditSessionResult =
   | CancelProfileEditSessionSucceeded(profileEditSessionMutationSucceeded)
   | CancelProfileEditSessionFailed(profileEditSessionMutationFailed)
@@ -1267,6 +1272,10 @@ type agentServiceResult = {
 @module("./AgentEditService.js") external submitAgentEditOnServer: agentServiceInput => promise<
   agentServiceResult,
 > = "submitAgentEdit"
+
+@module("./AgentEditService.js") external startAgentEditOnServer: agentServiceInput => promise<
+  agentServiceResult,
+> = "startAgentEdit"
 
 @module("./SendProfileLookup.js")
 external lookupSendAvatarUrl: string => promise<Nullable.t<string>> = "lookupSendAvatarUrl"
@@ -2913,6 +2922,48 @@ let profileEditSessionSuccess = (
   validationErrors,
 }
 
+let agentServiceInputFromSubmitInput = (
+  ~databaseUrl: string,
+  ~actorUserId: string,
+  input: submitAgentEditInput,
+): agentServiceInput => {
+  let currentVersionId = input.currentVersionId->Option.map(rawDbIdString)
+  let selectionLabel = input.selectionLabel
+  let selectionAgentContext = input.selectionAgentContext
+  let selectedRegionScreenshotDataUrl = input.selectedRegionScreenshotDataUrl
+  let fullPageScreenshotDataUrl = input.fullPageScreenshotDataUrl
+  let referenceImageDataUrl = input.referenceImageDataUrl
+  let previousFailedHtml = input.previousFailedHtml
+  let previousFailedCss = input.previousFailedCss
+  let previousFailedSummary = input.previousFailedSummary
+  let previousFailedWarnings = input.previousFailedWarnings
+  let previousFailedValidationMessage = input.previousFailedValidationMessage
+  let profileName = input.profileName
+  let sendtag = input.sendtag
+  let mode = input.mode->Option.map(assistantEditModeToWire)
+
+  {
+    databaseUrl,
+    profileId: input.profileId->rawDbIdString,
+    currentVersionId: ?currentVersionId,
+    actorUserId,
+    prompt: input.prompt,
+    selectionLabel: ?selectionLabel,
+    selectionAgentContext: ?selectionAgentContext,
+    selectedRegionScreenshotDataUrl: ?selectedRegionScreenshotDataUrl,
+    fullPageScreenshotDataUrl: ?fullPageScreenshotDataUrl,
+    referenceImageDataUrl: ?referenceImageDataUrl,
+    previousFailedHtml: ?previousFailedHtml,
+    previousFailedCss: ?previousFailedCss,
+    previousFailedSummary: ?previousFailedSummary,
+    previousFailedWarnings: ?previousFailedWarnings,
+    previousFailedValidationMessage: ?previousFailedValidationMessage,
+    profileName: ?profileName,
+    sendtag: ?sendtag,
+    mode: ?mode,
+  }
+}
+
 let profileWriteAuthError = "You need to be signed in as this profile owner to edit it."
 
 let stubSavedVersion = (~input: saveManualProfileVersionInput): profileVersion => {
@@ -3839,6 +3890,91 @@ let restoreProfileVersion = async (
     ))
   }
 
+/** Starts an agent edit and returns the initial edit session immediately for polling. */
+@live @gql.field
+let startAgentEdit = async (
+  _: mutation,
+  ~input: submitAgentEditInput,
+  ~ctx: ResGraphContext.context,
+): startAgentEditResult => {
+  if input.prompt->isBlank {
+    StartAgentEditFailed(profileEditSessionFailure(
+      ~summary="Agent edit was not submitted.",
+      ~validationErrors=[],
+      ~error="Prompt is required.",
+    ))
+  } else {
+    switch ctx.databaseUrl {
+    | None =>
+      StartAgentEditFailed(profileEditSessionFailure(
+        ~summary="Agent edit was not submitted.",
+        ~validationErrors=[],
+        ~error="Assistant changes require a database-backed profile.",
+      ))
+    | Some(databaseUrl) =>
+      switch await loadProfileById(ctx, input.profileId) {
+      | None =>
+        StartAgentEditFailed(profileEditSessionFailure(
+          ~summary="Agent edit was not submitted.",
+          ~validationErrors=[],
+          ~error="Profile was not found.",
+        ))
+      | Some(profile) =>
+        switch await profileWriteActorIdForViewer(ctx, profile) {
+        | None =>
+          StartAgentEditFailed(profileEditSessionFailure(
+            ~summary="Agent edit was not authorized.",
+            ~validationErrors=[],
+            ~error=profileWriteAuthError,
+          ))
+        | Some(actorUserId) =>
+          let result = await startAgentEditOnServer(
+            input->agentServiceInputFromSubmitInput(~databaseUrl, ~actorUserId)
+          )
+          let editSession = result.session->Option.map(profileEditSessionFromAgentService)
+          let resultVersionId = switch editSession {
+          | Some(session) => session.resultVersionId
+          | None => result.version->Option.map(version => version.id->ResGraph.id)
+          }
+
+          if result.ok {
+            switch editSession {
+            | Some(editSession) =>
+              StartAgentEditSucceeded(profileEditSessionSuccess(
+                ~editSession,
+                ~providerConversationId=result.providerConversationId,
+                ~resultVersionId,
+                ~summary=result.summary,
+                ~warnings=result.warnings,
+                ~validationErrors=result.validationErrors,
+              ))
+            | None =>
+              StartAgentEditFailed(profileEditSessionFailure(
+                ~providerConversationId=?result.providerConversationId,
+                ~resultVersionId=?resultVersionId,
+                ~summary=result.summary,
+                ~warnings=result.warnings,
+                ~validationErrors=result.validationErrors,
+                ~error=result.error->Option.getOr("Assistant request did not return an edit session."),
+              ))
+            }
+          } else {
+            StartAgentEditFailed(profileEditSessionFailure(
+              ~editSession=?editSession,
+              ~providerConversationId=?result.providerConversationId,
+              ~resultVersionId=?resultVersionId,
+              ~summary=result.summary,
+              ~warnings=result.warnings,
+              ~validationErrors=result.validationErrors,
+              ~error=result.error->Option.getOr("Assistant request failed."),
+            ))
+          }
+        }
+      }
+    }
+  }
+}
+
 /** Agent edit submission backed by the server-side OpenAI provider. */
 @live @gql.field
 let submitAgentEdit = async (
@@ -3877,40 +4013,9 @@ let submitAgentEdit = async (
             ~error=profileWriteAuthError,
           ))
         | Some(actorUserId) =>
-          let currentVersionId = input.currentVersionId->Option.map(rawDbIdString)
-          let selectionLabel = input.selectionLabel
-          let selectionAgentContext = input.selectionAgentContext
-          let selectedRegionScreenshotDataUrl = input.selectedRegionScreenshotDataUrl
-          let fullPageScreenshotDataUrl = input.fullPageScreenshotDataUrl
-          let referenceImageDataUrl = input.referenceImageDataUrl
-          let previousFailedHtml = input.previousFailedHtml
-          let previousFailedCss = input.previousFailedCss
-          let previousFailedSummary = input.previousFailedSummary
-          let previousFailedWarnings = input.previousFailedWarnings
-          let previousFailedValidationMessage = input.previousFailedValidationMessage
-          let profileName = input.profileName
-          let sendtag = input.sendtag
-          let mode = input.mode->Option.map(assistantEditModeToWire)
-          let result = await submitAgentEditOnServer({
-            databaseUrl,
-            profileId: input.profileId->rawDbIdString,
-            currentVersionId: ?currentVersionId,
-            actorUserId,
-            prompt: input.prompt,
-            selectionLabel: ?selectionLabel,
-            selectionAgentContext: ?selectionAgentContext,
-            selectedRegionScreenshotDataUrl: ?selectedRegionScreenshotDataUrl,
-            fullPageScreenshotDataUrl: ?fullPageScreenshotDataUrl,
-            referenceImageDataUrl: ?referenceImageDataUrl,
-            previousFailedHtml: ?previousFailedHtml,
-            previousFailedCss: ?previousFailedCss,
-            previousFailedSummary: ?previousFailedSummary,
-            previousFailedWarnings: ?previousFailedWarnings,
-            previousFailedValidationMessage: ?previousFailedValidationMessage,
-            profileName: ?profileName,
-            sendtag: ?sendtag,
-            mode: ?mode,
-          })
+          let result = await submitAgentEditOnServer(
+            input->agentServiceInputFromSubmitInput(~databaseUrl, ~actorUserId)
+          )
           let editSession = result.session->Option.map(profileEditSessionFromAgentService)
           let resultVersionId = switch editSession {
           | Some(session) => session.resultVersionId
