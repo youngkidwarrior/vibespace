@@ -32,6 +32,12 @@ let modeLabel = mode =>
   | Reasoning => "Deeper edits"
   }
 
+let estimateMode = mode =>
+  switch mode {
+  | Fast => AssistantEstimate.Fast
+  | Reasoning => AssistantEstimate.Reasoning
+  }
+
 let isPending = requestState =>
   switch requestState {
   | Pending => true
@@ -110,7 +116,17 @@ let make = (
             </ToggleGroup.Item>
           </ToggleGroup>
           <span className="font-mono text-xs font-bold text-neutral-500"> {React.string(mode->modeLabel)} </span>
+          <span className="rounded-full bg-neutral-100 px-2 py-1 text-xs font-bold text-neutral-600">
+            {React.string("ETA " ++ (mode->estimateMode)->AssistantEstimate.label)}
+          </span>
         </div>
+        <p className="m-0 text-xs leading-snug text-neutral-500">
+          {React.string(
+            pending
+              ? (mode->estimateMode)->AssistantEstimate.waitingCopy
+              : (mode->estimateMode)->AssistantEstimate.detail,
+          )}
+        </p>
         <Textarea
           className="min-h-32 resize-y"
           value
