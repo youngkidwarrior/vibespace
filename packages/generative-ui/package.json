@@ -1,0 +1,19 @@
+{
+  "name": "@vibespace/generative-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/GenerativeUi.res.js",
+  "types": "src/GenerativeUi.gen.tsx",
+  "scripts": {
+    "rescript": "rescript",
+    "clean": "rescript clean"
+  },
+  "dependencies": {
+    "@rescript/runtime": "12.2.0",
+    "@rescript/webapi": "0.1.0-experimental-0781ac8"
+  },
+  "devDependencies": {
+    "rescript": "12.2.0"
+  }
+}
