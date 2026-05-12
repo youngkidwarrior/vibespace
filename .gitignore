@@ -7,6 +7,8 @@ lib
 .env
 .env.local
 .home
+.corepack
+.npm-cache
 .vite
 .yarn/cache
 .yarn/unplugged

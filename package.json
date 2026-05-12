@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "yarn@1.22.22",
+  "packageManager": "yarn@4.3.1",
   "scripts": {
     "dev": "rescript && vite",
     "build": "rescript && vite build",
@@ -15,7 +15,9 @@
   "dependencies": {
     "@rescript/core": "1.6.1",
     "@rescript/react": "0.15.0",
+    "@rescript/runtime": "12.2.0",
     "@tambo-ai/react": "1.2.6",
+    "@types/react": "19.2.14",
     "@vitejs/plugin-react": "5.1.0",
     "quansync": "0.2.11",
     "react": "19.2.0",
