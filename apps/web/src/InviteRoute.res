@@ -25,21 +25,33 @@ module Query = %relay(`
   }
 `)
 
+module SendtagLookupQuery = %relay(`
+  query InviteRouteSendtagLookupQuery($sendtag: String!) {
+    sendtagLookup(sendtag: $sendtag) {
+      ok
+      sendtag
+      message
+    }
+  }
+`)
+
 @module("./OnboardingFileReader.js")
 external readFirstImageFromEvent: ReactEvent.Synthetic.t => promise<Nullable.t<string>> =
   "readFirstImageFromEvent"
 
-type sendtagValidationResult = {
-  ok: bool,
-  sendtag: string,
-  message: string,
+let validateSendtag = async rawSendtag => {
+  let variables: InviteRouteSendtagLookupQuery_graphql.Types.variables = {sendtag: rawSendtag}
+  let data: InviteRouteSendtagLookupQuery_graphql.Types.response = await RescriptRelay_QueryNonReact.fetchPromised(
+    ~node=InviteRouteSendtagLookupQuery_graphql.node,
+    ~convertResponse=InviteRouteSendtagLookupQuery_graphql.Internal.convertResponse,
+    ~convertVariables=InviteRouteSendtagLookupQuery_graphql.Internal.convertVariables,
+  )(
+    ~environment=RelayEnv.environment,
+    ~variables,
+    ~fetchPolicy=NetworkOnly,
+  )
+  data.sendtagLookup
 }
-
-@module("./SendProfileLookup.js")
-external validateSendtag: string => promise<sendtagValidationResult> = "validateSendtag"
-
-@val @scope(("window", "location")) external assignLocation: string => unit = "assign"
-@val external encodeURIComponent: string => string = "encodeURIComponent"
 
 type onboardingMode =
   | People
@@ -200,8 +212,16 @@ let make = (~queryRef, ~code: string) => {
   let (redeemInvite, redeemInviteInFlight) = ProfileVersionMutations.RedeemInviteMutation.use()
   let (submitAgentEdit, submitAgentEditInFlight) = ProfileVersionMutations.SubmitAgentEditMutation.use()
 
-  let goHome = () => assignLocation("/")
-  let reloadInvite = () => assignLocation("/invite/" ++ code->encodeURIComponent)
+  let goHome = () => router.push(editorLink)
+  let invalidateRelayStore = () =>
+    RescriptRelay.commitLocalUpdate(
+      ~environment=RelayEnv.environment,
+      ~updater=store => store->RescriptRelay.RecordSourceSelectorProxy.invalidateStore,
+    )
+  let openSavedSession = () => {
+    invalidateRelayStore()
+    router.replace(editorLink)
+  }
 
   let updateAnswers = setter => setAnswers(current => setter(current))
 
@@ -224,8 +244,8 @@ let make = (~queryRef, ~code: string) => {
       setManualSessionMessage(_ => Some("Paste your account key first."))
     } else {
       LocalViewerSession.save(token)
-      setManualSessionMessage(_ => Some("Account key saved. Reloading..."))
-      reloadInvite()
+      setManualSessionMessage(_ => Some("Account key saved. Opening your Vibespace..."))
+      openSavedSession()
     }
   }
 

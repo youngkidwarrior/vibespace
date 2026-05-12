@@ -291,6 +291,8 @@ let t_SelectedElementMetadata: ref<GraphQLObjectType.t> = Obj.magic({"contents":
 let get_SelectedElementMetadata = () => t_SelectedElementMetadata.contents
 let t_SelectionSnapshot: ref<GraphQLObjectType.t> = Obj.magic({"contents": null})
 let get_SelectionSnapshot = () => t_SelectionSnapshot.contents
+let t_SendtagLookupResult: ref<GraphQLObjectType.t> = Obj.magic({"contents": null})
+let get_SendtagLookupResult = () => t_SendtagLookupResult.contents
 let t_TrustedCapabilityReference: ref<GraphQLObjectType.t> = Obj.magic({"contents": null})
 let get_TrustedCapabilityReference = () => t_TrustedCapabilityReference.contents
 let t_User: ref<GraphQLObjectType.t> = Obj.magic({"contents": null})
@@ -2657,6 +2659,16 @@ t_Query.contents = GraphQLObjectType.make({
           BackendSchema.randomProfile(src, ~ctx)
         }),
       },
+      "sendtagLookup": {
+        typ: get_SendtagLookupResult()->GraphQLObjectType.toGraphQLType->nonNull,
+        description: "Validate a public Sendtag through the server-owned Send lookup integration.",
+        deprecationReason: ?None,
+        args: {"sendtag": {typ: Scalars.string->Scalars.toGraphQLType->nonNull}}->makeArgs,
+        resolve: makeResolveFn((src, args, ctx, info) => {
+          let src = typeUnwrapper(src)
+          BackendSchema.sendtagLookup(src, ~ctx, ~sendtag=args["sendtag"])
+        }),
+      },
       "viewer": {
         typ: get_User()->GraphQLObjectType.toGraphQLType,
         description: "The current viewer account.",
@@ -2961,6 +2973,41 @@ t_SelectionSnapshot.contents = GraphQLObjectType.make({
         resolve: makeResolveFn((src, _args, _ctx, _info) => {
           let src = typeUnwrapper(src)
           src["viewportJson"]
+        }),
+      },
+    }->makeFields,
+})
+t_SendtagLookupResult.contents = GraphQLObjectType.make({
+  name: "SendtagLookupResult",
+  description: ?None,
+  interfaces: [],
+  fields: () =>
+    {
+      "message": {
+        typ: Scalars.string->Scalars.toGraphQLType->nonNull,
+        description: ?None,
+        deprecationReason: ?None,
+        resolve: makeResolveFn((src, _args, _ctx, _info) => {
+          let src = typeUnwrapper(src)
+          src["message"]
+        }),
+      },
+      "ok": {
+        typ: Scalars.boolean->Scalars.toGraphQLType->nonNull,
+        description: ?None,
+        deprecationReason: ?None,
+        resolve: makeResolveFn((src, _args, _ctx, _info) => {
+          let src = typeUnwrapper(src)
+          src["ok"]
+        }),
+      },
+      "sendtag": {
+        typ: Scalars.string->Scalars.toGraphQLType->nonNull,
+        description: ?None,
+        deprecationReason: ?None,
+        resolve: makeResolveFn((src, _args, _ctx, _info) => {
+          let src = typeUnwrapper(src)
+          src["sendtag"]
         }),
       },
     }->makeFields,
@@ -3500,6 +3547,7 @@ let schema = GraphQLSchemaType.make({
     get_ProfileEditSessionMutationSucceeded()->GraphQLObjectType.toGraphQLType,
     get_InviteChainFriend()->GraphQLObjectType.toGraphQLType,
     get_User()->GraphQLObjectType.toGraphQLType,
+    get_SendtagLookupResult()->GraphQLObjectType.toGraphQLType,
     get_TrustedCapabilityReference()->GraphQLObjectType.toGraphQLType,
     get_ProfileEditSession()->GraphQLObjectType.toGraphQLType,
     get_ProfileVersionConnection()->GraphQLObjectType.toGraphQLType,

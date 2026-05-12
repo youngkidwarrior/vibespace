@@ -163,6 +163,13 @@ type selectedElementMetadata = {
 }
 
 @gql.type
+type sendtagLookupResult = {
+  @live @gql.field ok: bool,
+  @live @gql.field sendtag: string,
+  @live @gql.field message: string,
+}
+
+@gql.type
 type selectionSnapshot = {
   ...node,
   @live @gql.field profileId: ResGraph.id,
@@ -1277,6 +1284,8 @@ type agentServiceResult = {
   agentServiceResult,
 > = "startAgentEdit"
 
+@module("./SendProfileLookup.js")
+external normalizeSendtagOnServer: string => string = "normalizeSendtag"
 @module("./SendProfileLookup.js")
 external lookupSendAvatarUrl: string => promise<Nullable.t<string>> = "lookupSendAvatarUrl"
 
@@ -3151,6 +3160,41 @@ let randomProfile = async (_: query, ~ctx: ResGraphContext.context): option<prof
     | None if ctx->allowFixtureData =>
       fixtureProfiles->Array.find(profile => profile->profileHasCompletedCurrentVersion)
     | None => None
+    }
+  }
+}
+
+/** Validate a public Sendtag through the server-owned Send lookup integration. */
+@live @gql.field
+let sendtagLookup = async (
+  _: query,
+  ~sendtag: string,
+  ~ctx: ResGraphContext.context,
+): sendtagLookupResult => {
+  let _ = ctx
+  let normalizedSendtag = sendtag->normalizeSendtagOnServer
+  if normalizedSendtag == "" {
+    {
+      ok: true,
+      sendtag: "",
+      message: "",
+    }
+  } else {
+    switch (await lookupSendAvatarUrl(normalizedSendtag))->Nullable.toOption {
+    | Some(_) =>
+      {
+        ok: true,
+        sendtag: normalizedSendtag,
+        message: "",
+      }
+    | None =>
+      {
+        ok: false,
+        sendtag: normalizedSendtag,
+        message: "We could not find a public Send profile for /" ++
+          normalizedSendtag ++
+          ". Check the tag or leave it blank.",
+      }
     }
   }
 }
