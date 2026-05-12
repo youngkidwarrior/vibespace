@@ -96,7 +96,14 @@ let make = (~queryRef, ~route: Route.t) => {
   }: App.inviteSnapshot))
   switch data.viewerProfile {
   | Some(profile) =>
-    <ProfileDocumentData route profile=profile.fragmentRefs viewer availableInvite viewerUsedInvite />
+    <ProfileDocumentData
+      route
+      profile=profile.fragmentRefs
+      viewer
+      availableInvite
+      viewerUsedInvite
+      canonicalizeRootUrl=true
+    />
   | None =>
     switch data.viewer {
     | Some(_) => <App route />
