@@ -609,6 +609,9 @@ type Query {
   """Invite lookup for the invite-link onboarding route."""
   inviteByCode(code: String!): Invite
 
+  """Validate a public Sendtag through the server-owned Send lookup integration."""
+  sendtagLookup(sendtag: String!): SendtagLookupResult!
+
   """Random friend-visible profile that belongs to an enabled user and has completed onboarding."""
   randomProfile: Profile
 
@@ -677,6 +680,12 @@ type SelectionSnapshot implements Node {
 
   """Relay global id for every type implementing Node."""
   id: ID!
+}
+
+type SendtagLookupResult {
+  ok: Boolean!
+  sendtag: String!
+  message: String!
 }
 
 type TrustedCapabilityReference implements Node {
