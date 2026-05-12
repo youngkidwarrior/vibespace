@@ -4,6 +4,8 @@ dist
 lib
 *.bs.js
 *.bs.js.map
+*.res.js
+*.res.js.map
 .env
 .env.local
 .home
