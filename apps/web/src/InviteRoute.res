@@ -62,7 +62,6 @@ type onboardingStep =
   | ChooseVibe
   | Questions
   | Generating
-  | Ready
 
 type redeemedAccount = {
   sessionToken: string,
@@ -180,7 +179,9 @@ let textareaClass =
 let make = (~queryRef, ~code: string) => {
   let data = Query.usePreloaded(~queryRef)
   let router = RelayRouter.Utils.useRouter()
+  let agentTracker = AgentEditTracker.use()
   let editorLink = Routes.Editor.Route.makeLink()
+  let exploreLink = Routes.Explore.Route.makeLink()
   let initialRedeemedAccount = switch (LocalViewerSession.load(), data.viewer, data.viewerProfile) {
   | (Some(sessionToken), Some(_viewer), Some(profile)) =>
     Some({
@@ -378,9 +379,17 @@ let make = (~queryRef, ~code: string) => {
                   }
                 | None =>
                   switch response.submitAgentEdit {
-                  | ProfileEditSessionMutationSucceeded(_) =>
-                    setMessage(_ => Some("Your starter Vibespace is ready."))
-                    setStep(_ => Ready)
+                  | ProfileEditSessionMutationSucceeded(payload) =>
+                    agentTracker.trackOnboardingStarter({
+                      sessionId: payload.succeededEditSession.id,
+                      profileSlug: account.profileSlug,
+                      inviteCode: code,
+                    })
+                    invalidateRelayStore()
+                    setMessage(_ =>
+                      Some("We are building your starter Vibespace in the background.")
+                    )
+                    setStep(_ => Generating)
                   | ProfileEditSessionMutationFailed({message}) =>
                     setMessage(_ => Some(message))
                     setStep(_ => Questions)
@@ -728,33 +737,43 @@ let make = (~queryRef, ~code: string) => {
     </article>
 
   let renderGenerating = () =>
-    <article className="grid w-[min(560px,100%)] justify-items-center gap-4 rounded-[2rem] border border-white/70 bg-white/90 p-8 text-center shadow-2xl backdrop-blur-xl">
-      <span className="size-12 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-950" />
-      <h1 className="m-0 text-4xl font-black leading-none tracking-normal">
-        {React.string("Catching the vibe...")}
-      </h1>
-      <p className="m-0 text-base leading-relaxed text-neutral-600">
-        {React.string("Codex is turning your photo and answers into a starter profile.")}
-      </p>
-    </article>
-
-  let renderReady = () =>
-    <article className="grid w-[min(560px,100%)] gap-4 rounded-[2rem] border border-white/70 bg-white/90 p-8 text-center shadow-2xl backdrop-blur-xl">
-      <h1 className="m-0 text-5xl font-black leading-none tracking-normal max-md:text-4xl">
-        {React.string("Your Vibespace is ready.")}
-      </h1>
-      {redeemedAccount->Option.mapOr(React.null, account =>
-        <p className="m-0 text-base leading-relaxed text-neutral-600">
-          {React.string("Your route is /u/" ++ account.profileSlug ++ ". The temporary account key is saved in this browser.")}
+    <div className="grid w-[min(760px,100%)] gap-4">
+      <article className="grid justify-items-center gap-4 rounded-[2rem] border border-white/70 bg-white/90 p-8 text-center shadow-2xl backdrop-blur-xl">
+        <span className="size-12 rounded-full border-4 border-amber-200 bg-amber-100 shadow-[0_0_0_10px_rgba(251,191,36,0.16)]" />
+        <p className="m-0 text-xs font-black uppercase tracking-[0.18em] text-amber-700">
+          {React.string("Building in the background")}
         </p>
-      )}
+        <h1 className="m-0 text-4xl font-black leading-none tracking-normal">
+          {React.string("Your starter profile is on the way.")}
+        </h1>
+        <p className="m-0 max-w-xl text-base leading-relaxed text-neutral-600">
+          {React.string("Reasoning model generations usually take about 3-5 minutes. You can leave this page now; Vibespace will keep checking and show a small notification when your profile is ready.")}
+        </p>
+        {message->Option.mapOr(React.null, text =>
+          <Alert>
+            <Alert.Description> {React.string(text)} </Alert.Description>
+          </Alert>
+        )}
+        <div className="flex flex-wrap justify-center gap-2.5">
+          <RelayRouter.Link
+            className="inline-flex h-10 items-center rounded-md border border-neutral-950 bg-neutral-950 px-4 text-sm font-black text-white no-underline hover:bg-neutral-800"
+            to_=exploreLink
+            preloadCode=OnInView
+            preloadData=OnIntent
+            preloadPriority=High>
+            {React.string("Explore profiles")}
+          </RelayRouter.Link>
+          <RelayRouter.Link
+            className="inline-flex h-10 items-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-black text-neutral-950 no-underline hover:bg-neutral-50"
+            to_=editorLink
+            preloadCode=OnInView
+            preloadData=OnIntent>
+            {React.string("Open app")}
+          </RelayRouter.Link>
+        </div>
+      </article>
       {renderAccountKey()}
-      <div className="flex justify-center">
-        <Button type_="button" onClick={_ => goHome()}>
-          {React.string("Open my Vibespace")}
-        </Button>
-      </div>
-    </article>
+    </div>
 
   switch data.inviteByCode {
   | None =>
@@ -816,7 +835,6 @@ let make = (~queryRef, ~code: string) => {
           | ChooseVibe => renderChoice()
           | Questions => renderQuestions()
           | Generating => renderGenerating()
-          | Ready => renderReady()
           }}
         </>,
       )
