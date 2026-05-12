@@ -609,6 +609,9 @@ type Query {
   """Invite lookup for the invite-link onboarding route."""
   inviteByCode(code: String!): Invite
 
+  """Random friend-visible profile that belongs to an enabled user and has completed onboarding."""
+  randomProfile: Profile
+
   """Friend-visible profile by handle."""
   profileByHandle(handle: String!): Profile
 

@@ -60,7 +60,7 @@ module GetUserById: {
   /** Returns exactly 1 result. Returns `None` if more or less than exactly 1 result is returned. */
   @gentype
   let one: (PgTyped.Pg.Client.t, getUserByIdParams) => promise<option<getUserByIdResult>>
-  
+
   /** Returns exactly 1 result. Raises `Exn.t` (with an optionally provided `errorMessage`) if more or less than exactly 1 result is returned. */
   @gentype
   let expectOne: (
@@ -2013,6 +2013,118 @@ module GetProfileBySlug: {
 @gentype
 @deprecated("Use 'GetProfileBySlug.many' directly instead")
 let getProfileBySlug = (params, ~client) => GetProfileBySlug.many(client, params)
+
+
+/** 'GetRandomPublicProfile' parameters type */
+@gentype
+type getRandomPublicProfileParams = unit
+
+/** 'GetRandomPublicProfile' return type */
+@gentype
+type getRandomPublicProfileResult = {
+  createdAt: option<string>,
+  currentVersionId: option<string>,
+  disabledAt: option<string>,
+  disabledReason: option<string>,
+  id: string,
+  ownerUserId: string,
+  publishedAt: option<string>,
+  sendtag: option<string>,
+  slug: string,
+  title: string,
+  updatedAt: option<string>,
+  visibility: string,
+}
+
+/** 'GetRandomPublicProfile' query type */
+@gentype
+type getRandomPublicProfileQuery = {
+  params: getRandomPublicProfileParams,
+  result: getRandomPublicProfileResult,
+}
+
+%%private(let getRandomPublicProfileIR: IR.t = %raw(`{"usedParamSet":{},"params":[],"statement":"SELECT\n  p.id AS \"id\",\n  p.owner_user_id AS \"ownerUserId\",\n  p.slug AS \"slug\",\n  p.title AS \"title\",\n  p.sendtag AS \"sendtag\",\n  p.visibility AS \"visibility\",\n  p.current_version_id AS \"currentVersionId\",\n  p.created_at::text AS \"createdAt\",\n  p.updated_at::text AS \"updatedAt\",\n  p.published_at::text AS \"publishedAt\",\n  p.disabled_at::text AS \"disabledAt\",\n  p.disabled_reason AS \"disabledReason\"\nFROM vibespace.profiles p\nJOIN vibespace.users u ON u.id = p.owner_user_id\nJOIN vibespace.profile_versions pv\n  ON pv.id = p.current_version_id\n  AND pv.profile_id = p.id\nWHERE u.status = 'enabled'\n  AND p.visibility = 'friends'\n  AND p.disabled_at IS NULL\n  AND pv.source <> 'import'\n  AND pv.validation_status = 'valid'\nORDER BY random()\nLIMIT 1"}`))
+
+/**
+ Runnable query:
+ ```sql
+SELECT
+  p.id AS "id",
+  p.owner_user_id AS "ownerUserId",
+  p.slug AS "slug",
+  p.title AS "title",
+  p.sendtag AS "sendtag",
+  p.visibility AS "visibility",
+  p.current_version_id AS "currentVersionId",
+  p.created_at::text AS "createdAt",
+  p.updated_at::text AS "updatedAt",
+  p.published_at::text AS "publishedAt",
+  p.disabled_at::text AS "disabledAt",
+  p.disabled_reason AS "disabledReason"
+FROM vibespace.profiles p
+JOIN vibespace.users u ON u.id = p.owner_user_id
+JOIN vibespace.profile_versions pv
+  ON pv.id = p.current_version_id
+  AND pv.profile_id = p.id
+WHERE u.status = 'enabled'
+  AND p.visibility = 'friends'
+  AND p.disabled_at IS NULL
+  AND pv.source <> 'import'
+  AND pv.validation_status = 'valid'
+ORDER BY random()
+LIMIT 1
+ ```
+
+ */
+@gentype
+module GetRandomPublicProfile: {
+  /** Returns an array of all matched results. */
+  @gentype
+  let many: (PgTyped.Pg.Client.t, getRandomPublicProfileParams) => promise<array<getRandomPublicProfileResult>>
+  /** Returns exactly 1 result. Returns `None` if more or less than exactly 1 result is returned. */
+  @gentype
+  let one: (PgTyped.Pg.Client.t, getRandomPublicProfileParams) => promise<option<getRandomPublicProfileResult>>
+
+  /** Returns exactly 1 result. Raises `Exn.t` (with an optionally provided `errorMessage`) if more or less than exactly 1 result is returned. */
+  @gentype
+  let expectOne: (
+    PgTyped.Pg.Client.t,
+    getRandomPublicProfileParams,
+    ~errorMessage: string=?
+  ) => promise<getRandomPublicProfileResult>
+
+  /** Executes the query, but ignores whatever is returned by it. */
+  @gentype
+  let execute: (PgTyped.Pg.Client.t, getRandomPublicProfileParams) => promise<unit>
+} = {
+  @module("pgtyped-rescript-runtime") @new external getRandomPublicProfile: IR.t => PreparedStatement.t<getRandomPublicProfileParams, getRandomPublicProfileResult> = "PreparedQuery";
+  let query = getRandomPublicProfile(getRandomPublicProfileIR)
+  let query = (params, ~client) => query->PreparedStatement.run(params, ~client)
+
+  @gentype
+  let many = (client, params) => query(params, ~client)
+
+  @gentype
+  let one = async (client, params) => switch await query(params, ~client) {
+  | [item] => Some(item)
+  | _ => None
+  }
+
+  @gentype
+  let expectOne = async (client, params, ~errorMessage=?) => switch await query(params, ~client) {
+  | [item] => item
+  | _ => panic(errorMessage->Option.getOr("More or less than one item was returned"))
+  }
+
+  @gentype
+  let execute = async (client, params) => {
+    let _ = await query(params, ~client)
+  }
+}
+
+@gentype
+@deprecated("Use 'GetRandomPublicProfile.many' directly instead")
+let getRandomPublicProfile = (params, ~client) => GetRandomPublicProfile.many(client, params)
 
 
 /** 'EnsureProfileForUser' parameters type */
@@ -4472,5 +4584,3 @@ module GetProfileUpdateEventById: {
 @gentype
 @deprecated("Use 'GetProfileUpdateEventById.many' directly instead")
 let getProfileUpdateEventById = (params, ~client) => GetProfileUpdateEventById.many(client, params)
-
-

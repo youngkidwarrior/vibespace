@@ -1368,20 +1368,19 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
   let renderInviteModal = () => {
     <BaseUi.Dialog.Root
       open_=inviteModalOpen
-      modal={BaseUi.Types.Modal.Bool(true)}
+      modal={BaseUi.Types.Modal.Bool(false)}
       onOpenChange={(open_, _details) => setInviteModalOpen(open_)}>
       <BaseUi.Dialog.Portal>
-        <BaseUi.Dialog.Backdrop className="fixed inset-0 z-[90] bg-neutral-950/40 backdrop-blur-md" />
-        <BaseUi.Dialog.Popup className="fixed left-1/2 top-1/2 z-[91] w-[min(440px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-white/60 bg-white p-6 text-neutral-950 shadow-2xl">
-          <div className="mb-3.5 flex items-center justify-between gap-2.5">
-            <span className="inline-grid size-10 place-items-center rounded-2xl bg-neutral-950 text-amber-200 shadow-lg" ariaHidden=true>
+        <BaseUi.Dialog.Popup className="fixed bottom-4 right-4 z-[91] w-[min(380px,calc(100vw-32px))] rounded-lg border border-white/70 bg-white p-4 text-neutral-950 shadow-2xl max-md:bottom-3 max-md:right-3 max-md:w-[calc(100vw-24px)]">
+          <div className="mb-3 flex items-start justify-between gap-2.5">
+            <span className="inline-grid size-9 place-items-center rounded-lg bg-neutral-950 text-amber-200 shadow-lg" ariaHidden=true>
               <Icons.Gift size=18 ariaHidden=true />
             </span>
             <BaseUi.Dialog.Close className="inline-grid size-8 cursor-pointer place-items-center rounded-full border-0 bg-neutral-100 text-neutral-900 hover:bg-neutral-200" ariaLabel="Close invite">
               <Icons.X size=16 ariaHidden=true />
             </BaseUi.Dialog.Close>
           </div>
-          <BaseUi.Dialog.Title className="m-0 text-4xl font-black leading-none tracking-normal">
+          <BaseUi.Dialog.Title className="m-0 text-2xl font-black leading-none tracking-normal">
             {React.string("One invite")}
           </BaseUi.Dialog.Title>
           <BaseUi.Dialog.Description className="mt-3 text-sm leading-relaxed text-neutral-600">
@@ -1391,7 +1390,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
           </BaseUi.Dialog.Description>
           {switch shareableInvite {
           | Some((invite, inviteLink)) =>
-            <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-3.5">
+            <div className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 p-3.5">
               <span className="block text-[11px] font-black uppercase tracking-wider text-amber-700">
                 {React.string("Invite " ++ invite.status->String.toLowerCase)}
               </span>
@@ -1410,7 +1409,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
               </div>
             </div>
           | None =>
-            <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50/70 p-3.5">
+            <div className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50/70 p-3.5">
               <span className="block text-[11px] font-black uppercase tracking-wider text-amber-700"> {React.string("No invite available")} </span>
               <p className="mt-2 break-words text-sm leading-snug text-neutral-950">
                 {React.string("Your invite is not available yet, it has already been used, or this account is disabled.")}

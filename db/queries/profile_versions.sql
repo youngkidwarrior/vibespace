@@ -401,6 +401,33 @@ SELECT
 FROM vibespace.profiles p
 WHERE p.slug = :slug!;
 
+/* @name getRandomPublicProfile */
+SELECT
+  p.id AS "id",
+  p.owner_user_id AS "ownerUserId",
+  p.slug AS "slug",
+  p.title AS "title",
+  p.sendtag AS "sendtag",
+  p.visibility AS "visibility",
+  p.current_version_id AS "currentVersionId",
+  p.created_at::text AS "createdAt",
+  p.updated_at::text AS "updatedAt",
+  p.published_at::text AS "publishedAt",
+  p.disabled_at::text AS "disabledAt",
+  p.disabled_reason AS "disabledReason"
+FROM vibespace.profiles p
+JOIN vibespace.users u ON u.id = p.owner_user_id
+JOIN vibespace.profile_versions pv
+  ON pv.id = p.current_version_id
+  AND pv.profile_id = p.id
+WHERE u.status = 'enabled'
+  AND p.visibility = 'friends'
+  AND p.disabled_at IS NULL
+  AND pv.source <> 'import'
+  AND pv.validation_status = 'valid'
+ORDER BY random()
+LIMIT 1;
+
 /* @name ensureProfileForUser */
 INSERT INTO vibespace.profiles (
   owner_user_id,
