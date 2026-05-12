@@ -879,14 +879,16 @@ let currentProfileVersion = (profile: profile): option<profileVersion> =>
   | Some(versionId) => profileVersionByRawId(versionId)
   }
 
+let profileVersionIsCompleted = (version: profileVersion): bool =>
+  switch (version.source, version.validationStatus) {
+  | (ProfileVersionSourceImport, _) => false
+  | (_, ValidationStatusValid) => true
+  | (_, ValidationStatusInvalid) => false
+  }
+
 let profileHasCompletedCurrentVersion = (profile: profile): bool =>
   switch profile->currentProfileVersion {
-  | Some(version) =>
-    switch (version.source, version.validationStatus) {
-    | (ProfileVersionSourceImport, _) => false
-    | (_, ValidationStatusValid) => true
-    | (_, ValidationStatusInvalid) => false
-    }
+  | Some(version) => version->profileVersionIsCompleted
   | None => false
   }
 
@@ -2417,6 +2419,20 @@ let loadCurrentProfileVersion = async (
   (await DataLoader.load(ctx.dataLoaders.profileVersions.currentByProfileId, profileId->rawDbIdString))
   ->Option.map(profileVersionFromCurrentByProfileIds)
 
+let profileIsPubliclyVisitable = async (
+  ctx: ResGraphContext.context,
+  profile: profile,
+): bool =>
+  switch profile.visibility {
+  | ProfileVisibilityDisabled => false
+  | ProfileVisibilityFriends =>
+    switch await loadCurrentProfileVersion(ctx, profile.id) {
+    | Some(version) => version->profileVersionIsCompleted
+    | None if ctx->allowFixtureData => profile->profileHasCompletedCurrentVersion
+    | None => false
+    }
+  }
+
 let loadProfileVersionsForProfile = async (
   ctx: ResGraphContext.context,
   profileId: ResGraph.id,
@@ -3031,12 +3047,23 @@ let profileByHandle = async (
   _: query,
   ~handle: string,
   ~ctx: ResGraphContext.context,
-): option<profile> =>
-  switch await loadProfileBySlug(ctx, handle) {
+): option<profile> => {
+  let profile = switch await loadProfileBySlug(ctx, handle) {
   | Some(profile) => Some(profile)
   | None if ctx->allowFixtureData => fixtureProfiles->Array.find(profile => profile.slug == handle)
   | None => None
   }
+
+  switch profile {
+  | Some(profile) =>
+    if await profileIsPubliclyVisitable(ctx, profile) {
+      Some(profile)
+    } else {
+      None
+    }
+  | None => None
+  }
+}
 
 /** Invite lookup for the invite-link onboarding route. */
 @live @gql.field
