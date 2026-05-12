@@ -86,6 +86,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
   let sourceRouteLink = Routes.Editor.Source.Route.makeLink()
   let preloadEditorRoute = () => router.preload(~priority=High, editorRouteLink)
   let preloadSourceRoute = () => router.preload(~priority=High, sourceRouteLink)
+  let routeProfileFrameLink = path => router.push(path)
   let (inviteCopyStatus, setInviteCopyStatus) = React.useState((): option<string> => None)
   let inviteModalOpen = switch editorQueryParams.invite {
   | Some(true) => true
@@ -1775,7 +1776,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
           className={selectionInteractionEnabled
             ? "block h-full w-full cursor-crosshair border-0 bg-white"
             : "block h-full w-full border-0 bg-white"}
-          sandbox="allow-same-origin allow-scripts allow-popups allow-presentation allow-top-navigation-by-user-activation"
+          sandbox="allow-same-origin allow-scripts allow-popups allow-presentation"
           srcDoc=canvasPreview
           onLoad={event => {
             let bridgeEditMode = isEditing && documentIsValid
@@ -1793,6 +1794,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
             BrowserBridge.attachFrameViewportListener(event, nextViewport =>
               setFrameViewport(_ => nextViewport)
             )
+            BrowserBridge.attachProfileLinkRouter(event, routeProfileFrameLink)
             BrowserBridge.attachSelectionBridge(
               event,
               selectedId,
@@ -1856,7 +1858,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
             <iframe
               title="Vibespace profile preview"
               className="block h-[520px] w-full border border-neutral-300 bg-white max-[1100px]:h-[420px]"
-              sandbox="allow-scripts allow-popups allow-presentation allow-top-navigation-by-user-activation"
+              sandbox="allow-scripts allow-popups allow-presentation"
               srcDoc=sourcePreview
             />
           </Card.Content>

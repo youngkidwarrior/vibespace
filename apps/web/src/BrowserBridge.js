@@ -2,6 +2,7 @@ import { toCanvas } from "html-to-image";
 import { attachToIframe } from "./SelectionBridge.res.js";
 
 const frameViewportCleanups = new WeakMap();
+const profileLinkRouterCleanups = new WeakMap();
 
 export function debugPromptsEnabled() {
   try {
@@ -22,22 +23,6 @@ export function debugPrompt(eventName, payload = "") {
 
   const safePayload = typeof payload === "string" ? payload : String(payload || "");
   console.debug("[vibespace:prompt]", eventName, safePayload);
-}
-
-export function replaceAddressUrl(url) {
-  try {
-    if (typeof window === "undefined") return;
-
-    const nextUrl = String(url || "").trim();
-    if (!nextUrl) return;
-
-    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    if (currentUrl === nextUrl) return;
-
-    window.history.replaceState(window.history.state, "", nextUrl);
-  } catch (_error) {
-    // URL canonicalization should never block profile rendering.
-  }
 }
 
 function numeric(value) {
@@ -90,6 +75,57 @@ export function attachFrameViewportListener(loadEvent, callback) {
     frameWindow.removeEventListener("resize", emit, options);
   });
   emit();
+}
+
+export function attachProfileLinkRouter(loadEvent, callback) {
+  const iframe = iframeFromLoadEvent(loadEvent);
+  const iframeDocument = iframe?.contentDocument || iframe?.contentWindow?.document;
+  if (!iframe || !iframeDocument) return;
+
+  profileLinkRouterCleanups.get(iframe)?.();
+
+  const handleClick = (event) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    const anchor = event.target?.closest?.("a[href]");
+    if (!anchor) return;
+
+    let url;
+    try {
+      url = new URL(anchor.getAttribute("href") || "", window.location.origin);
+    } catch (_error) {
+      return;
+    }
+
+    if (url.origin !== window.location.origin) return;
+
+    const target = String(anchor.getAttribute("target") || "").toLowerCase();
+    if (target && target !== "_top" && target !== "_self" && target !== "_parent") return;
+
+    const appRoute =
+      url.pathname === "/" ||
+      url.pathname === "/source" ||
+      url.pathname.startsWith("/u/") ||
+      url.pathname.startsWith("/invite/");
+    if (!appRoute) return;
+
+    event.preventDefault();
+    callback(`${url.pathname}${url.search}${url.hash}`);
+  };
+
+  iframeDocument.addEventListener("click", handleClick, true);
+  profileLinkRouterCleanups.set(iframe, () => {
+    iframeDocument.removeEventListener("click", handleClick, true);
+  });
 }
 
 async function captureAreaFromIframe(iframe, bounds) {

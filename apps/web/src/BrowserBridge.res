@@ -7,7 +7,10 @@ type frameViewport = {
 
 @module("./BrowserBridge.js") external attachSelectionBridgeRaw: (ReactEvent.Image.t, string, bool, ProfileSelection.payload => unit) => unit = "attachSelectionBridge"
 @module("./BrowserBridge.js") external debugPrompt: (string, string) => unit = "debugPrompt"
-@module("./BrowserBridge.js") external replaceAddressUrl: string => unit = "replaceAddressUrl"
+@module("./BrowserBridge.js") external attachProfileLinkRouter: (
+  ReactEvent.Image.t,
+  string => unit,
+) => unit = "attachProfileLinkRouter"
 @module("./BrowserBridge.js") external attachFrameViewportListener: (
   ReactEvent.Image.t,
   frameViewport => unit,

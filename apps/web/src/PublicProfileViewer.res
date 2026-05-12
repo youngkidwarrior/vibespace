@@ -98,11 +98,11 @@ let renderInvitePopup = (~onClose) =>
       )}
     </p>
     <div className="mt-3 flex flex-wrap items-center gap-2">
-      <a
+      <RelayRouter.Link
         className="inline-flex h-9 items-center rounded-md border border-neutral-950 bg-neutral-950 px-3 text-sm font-black text-white no-underline hover:bg-neutral-800"
-        href="/">
+        to_={Routes.Editor.Route.makeLink()}>
         {React.string("Preview another")}
-      </a>
+      </RelayRouter.Link>
       <span className="text-xs font-bold text-neutral-500">
         {React.string("Have an invite? Open that link to start.")}
       </span>
@@ -114,6 +114,7 @@ let make = (~profile, ~showInvitePopup=false, ~canonicalizeRootUrl=false) => {
   let profile = ProfileFragment.use(profile)
   let (invitePopupOpen, setInvitePopupOpen) = React.useState(() => showInvitePopup)
   let location = RelayRouter.Utils.useLocation()
+  let router = RelayRouter.Utils.useRouter()
   let canonicalProfileLink = Routes.Profile.Route.makeLink(~handle=profile.slug)
   let canonicalUrlKey =
     (canonicalizeRootUrl ? "1" : "0") ++
@@ -121,10 +122,11 @@ let make = (~profile, ~showInvitePopup=false, ~canonicalizeRootUrl=false) => {
 
   React.useEffect1(() => {
     if canonicalizeRootUrl && location.pathname == "/" && location.search == "" && location.hash == "" {
-      BrowserBridge.replaceAddressUrl(canonicalProfileLink)
+      router.replace(canonicalProfileLink)
     }
     None
   }, [canonicalUrlKey])
+  let routeProfileFrameLink = path => router.push(path)
 
   switch profile.currentVersion {
   | Some(version) =>
@@ -158,8 +160,9 @@ let make = (~profile, ~showInvitePopup=false, ~canonicalizeRootUrl=false) => {
       <iframe
         className="block h-screen w-screen border-0 bg-white"
         title={profile.title ++ " on Vibespace"}
-        sandbox="allow-same-origin allow-scripts allow-popups allow-presentation allow-top-navigation-by-user-activation"
+        sandbox="allow-same-origin allow-scripts allow-popups allow-presentation"
         srcDoc=preview
+        onLoad={event => BrowserBridge.attachProfileLinkRouter(event, routeProfileFrameLink)}
       />
       {showInvitePopup && invitePopupOpen
         ? renderInvitePopup(~onClose=() => setInvitePopupOpen(_ => false))
