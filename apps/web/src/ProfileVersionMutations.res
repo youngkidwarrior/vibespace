@@ -181,60 +181,6 @@ module StartAgentEditMutation = %relay(`
   }
 `)
 
-module ProfileEditSessionPollQuery = %relay(`
-  query ProfileVersionMutationsProfileEditSessionPollQuery($id: ID!) {
-    profileEditSessionById(id: $id) {
-      id
-      prompt
-      status
-      progressPhase
-      summary
-      warnings
-      error
-      resultVersionId
-      selectionSnapshot {
-        id
-        label
-      }
-      resultVersion {
-        id
-        revisionNumber
-        html
-        css
-        source
-        summary
-        validationStatus
-        validationErrors
-        createdBy {
-          id
-          displayName
-        }
-        createdAt
-      }
-      createdAt
-      updatedAt
-    }
-  }
-`)
-
-type polledProfileEditSession =
-  ProfileVersionMutationsProfileEditSessionPollQuery_graphql.Types.response_profileEditSessionById
-
-type profileEditSessionPollResponse = ProfileVersionMutationsProfileEditSessionPollQuery_graphql.Types.response
-
-let fetchProfileEditSession = (~id): promise<option<polledProfileEditSession>> =>
-  RescriptRelay_QueryNonReact.fetchPromised(
-    ~node=ProfileVersionMutationsProfileEditSessionPollQuery_graphql.node,
-    ~convertResponse=ProfileVersionMutationsProfileEditSessionPollQuery_graphql.Internal.convertResponse,
-    ~convertVariables=ProfileVersionMutationsProfileEditSessionPollQuery_graphql.Internal.convertVariables,
-  )(
-    ~environment=RelayEnv.environment,
-    ~variables={id},
-    ~fetchPolicy=NetworkOnly,
-  )->Promise.then((response: profileEditSessionPollResponse) =>
-    response.profileEditSessionById->Promise.resolve
-  )
-
 module SubmitAgentEditMutation = %relay(`
   mutation ProfileVersionMutationsSubmitAgentEditMutation(
     $input: SubmitAgentEditInput!

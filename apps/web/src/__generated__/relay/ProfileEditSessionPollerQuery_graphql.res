@@ -1,4 +1,4 @@
-/* @sourceLoc ProfileVersionMutations.res */
+/* @sourceLoc ProfileEditSessionPoller.res */
 /* @generated */
 %%raw("/* @generated */")
 module Types = {
@@ -380,7 +380,7 @@ return {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "ProfileVersionMutationsProfileEditSessionPollQuery",
+    "name": "ProfileEditSessionPollerQuery",
     "selections": (v4/*: any*/),
     "type": "Query",
     "abstractKey": null
@@ -389,16 +389,16 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
-    "name": "ProfileVersionMutationsProfileEditSessionPollQuery",
+    "name": "ProfileEditSessionPollerQuery",
     "selections": (v4/*: any*/)
   },
   "params": {
-    "cacheID": "f81087771c755bec5eec3ad53bb38a93",
+    "cacheID": "a584644f3ad320454df52a3a86ab962e",
     "id": null,
     "metadata": {},
-    "name": "ProfileVersionMutationsProfileEditSessionPollQuery",
+    "name": "ProfileEditSessionPollerQuery",
     "operationKind": "query",
-    "text": "query ProfileVersionMutationsProfileEditSessionPollQuery(\n  $id: ID!\n) {\n  profileEditSessionById(id: $id) {\n    id\n    prompt\n    status\n    progressPhase\n    summary\n    warnings\n    error\n    resultVersionId\n    selectionSnapshot {\n      id\n      label\n    }\n    resultVersion {\n      id\n      revisionNumber\n      html\n      css\n      source\n      summary\n      validationStatus\n      validationErrors\n      createdBy {\n        id\n        displayName\n      }\n      createdAt\n    }\n    createdAt\n    updatedAt\n  }\n}\n"
+    "text": "query ProfileEditSessionPollerQuery(\n  $id: ID!\n) {\n  profileEditSessionById(id: $id) {\n    id\n    prompt\n    status\n    progressPhase\n    summary\n    warnings\n    error\n    resultVersionId\n    selectionSnapshot {\n      id\n      label\n    }\n    resultVersion {\n      id\n      revisionNumber\n      html\n      css\n      source\n      summary\n      validationStatus\n      validationErrors\n      createdBy {\n        id\n        displayName\n      }\n      createdAt\n    }\n    createdAt\n    updatedAt\n  }\n}\n"
   }
 };
 })() `)

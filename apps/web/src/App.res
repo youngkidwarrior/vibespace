@@ -40,12 +40,6 @@ type inviteChainFriendSnapshot = PreviewBridge.inviteChainFriend
 type ownerProfileImageSnapshot = PreviewBridge.ownerProfileImage
 
 @val external encodeURIComponent: string => string = "encodeURIComponent"
-@val external setTimeout: (unit => unit, int) => int = "setTimeout"
-
-let sleep = ms =>
-  Promise.make((resolve, _reject) => {
-    let _timerId = setTimeout(() => resolve(), ms)
-  })
 
 type editorContext = {
   viewer: option<viewerSnapshot>,
@@ -65,6 +59,27 @@ type historyEntry =
   | BackendRequestEntry(profileEditSessionSnapshot)
   | SavedVersionEntry(profileVersionSnapshot)
   | LocalAppliedEntry(PromptHistory.item)
+
+type promptDraftPollJob = {
+  sessionId: string,
+  fallbackSelectionLabel: string,
+  draftId: PromptDraftId.t,
+  instruction: string,
+  selectionKind: ProfileSelection.kind,
+  selectionLabel: SelectionLabel.t,
+  selectionSnapshot: SelectionDescription.t,
+}
+
+type codexChatPollJob = {
+  sessionId: string,
+  fallbackSelectionLabel: string,
+  onSuccess: CodexChat.codexPatch => unit,
+  onError: string => unit,
+}
+
+type activeAgentPoll =
+  | PromptDraftPoll(promptDraftPollJob)
+  | CodexChatPoll(codexChatPollJob)
 
 let fixtureEditorContext = {
   viewer: None,
@@ -271,6 +286,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
   let (availableInvite, setAvailableInvite) = React.useState(() => editorContext.availableInvite)
   let (viewerUsedInvite, setViewerUsedInvite) = React.useState(() => editorContext.viewerUsedInvite)
   let (reactivateInviteConfirmOpen, setReactivateInviteConfirmOpen) = React.useState(() => false)
+  let (activeAgentPolls, setActiveAgentPolls) = React.useState((): array<activeAgentPoll> => [])
   // TODO: Support multiple simultaneous prompt bubbles anchored to different selections.
   // TODO: Promote activePromptDraft into an array of open prompt drafts with independent minimized/focused state.
   let (promptDrafts, setPromptDrafts) = React.useState(() => PromptDrafts.load())
@@ -295,6 +311,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     setAvailableInvite(_ => editorContext.availableInvite)
     setViewerUsedInvite(_ => editorContext.viewerUsedInvite)
     setReactivateInviteConfirmOpen(_ => false)
+    setActiveAgentPolls(_ => [])
     setIsEditing(_ => false)
     setSelection(_ => ProfileSelection.empty)
     setHistoryOpen(_ => false)
@@ -307,6 +324,25 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     setSelection(_ => ProfileSelection.empty)
     setHistoryOpen(_ => false)
   }
+
+  let activeAgentPollKey = poll =>
+    switch poll {
+    | PromptDraftPoll(job) => "draft:" ++ job.sessionId
+    | CodexChatPoll(job) => "codex:" ++ job.sessionId
+    }
+
+  let upsertActiveAgentPoll = poll => {
+    let key = poll->activeAgentPollKey
+    setActiveAgentPolls(current => [
+      poll,
+      ...current->Array.filter(existing => existing->activeAgentPollKey != key),
+    ])
+  }
+
+  let removeActiveAgentPoll = key =>
+    setActiveAgentPolls(current =>
+      current->Array.filter(existing => existing->activeAgentPollKey != key)
+    )
 
   let profileVersionSnapshot = (
     ~id: string,
@@ -448,7 +484,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     }
 
   let sessionSnapshotFromPolled = (
-    session: ProfileVersionMutations.polledProfileEditSession,
+    session: ProfileEditSessionPoller.polledProfileEditSession,
     ~fallbackSelectionLabel,
   ) =>
     profileEditSessionSnapshot(
@@ -465,47 +501,6 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
       ~createdAt=session.createdAt,
       ~updatedAt=session.updatedAt,
     )
-
-  let pollProfileEditSession = (
-    ~sessionId,
-    ~fallbackSelectionLabel,
-    ~onProgress,
-    ~onApplied,
-    ~onFailed,
-  ) => {
-    let rec poll = async () => {
-      await sleep(1000)
-      try {
-        switch await ProfileVersionMutations.fetchProfileEditSession(~id=sessionId) {
-        | None => onFailed("Assistant session was not found.")
-        | Some(session) =>
-          let snapshot = sessionSnapshotFromPolled(session, ~fallbackSelectionLabel)
-          setProfileEditSessionHistory(current =>
-            current->upsertProfileEditSessionSnapshot(snapshot)
-          )
-          onProgress(session.progressPhase->promptProgressPhaseFromRelay)
-
-          switch session.status {
-          | APPLIED =>
-            switch session.resultVersion {
-            | Some(version) => onApplied(session, version)
-            | None => onFailed("Assistant request applied without returning profile content.")
-            }
-          | FAILED =>
-            onFailed(session.error->Option.getOr("Assistant request failed."))
-          | CANCELED =>
-            onFailed(session.error->Option.getOr("Assistant request was canceled."))
-          | RUNNING | DRAFT | FutureAddedValue(_) => await poll()
-          }
-        }
-      } catch {
-      | JsExn(error) => onFailed(error->JsExn.message->Option.getOr("Unable to refresh assistant status."))
-      | _ => onFailed("Unable to refresh assistant status.")
-      }
-    }
-
-    poll()->Promise.ignore
-  }
 
   React.useEffect1(() => {
     PromptHistory.save(promptHistory)
@@ -1007,51 +1002,16 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
                   setDocumentNotice(_ => Some("Assistant request failed: " ++ message))
                   failDraft(message)
                 | None =>
-                  pollProfileEditSession(
-                    ~sessionId=session.id,
-                    ~fallbackSelectionLabel=draft.selection.label->SelectionLabel.toString,
-                    ~onProgress=phase =>
-                      setPromptDrafts(current =>
-                        PromptDrafts.markSubmittingPhase(current, draft.id, phase, Now.nowIso())
-                      ),
-                    ~onApplied=(session, version) => {
-                      let snapshot = profileVersionSnapshot(
-                        ~id=version.id,
-                        ~revisionNumber=version.revisionNumber,
-                        ~html=version.html,
-                        ~css=version.css,
-                        ~summary=version.summary,
-                        ~createdAt=version.createdAt,
-                      )
-                      applyProfileVersionSnapshot(snapshot, ~notice="Applied assistant changes.")
-                      let completedAt = Now.nowIso()
-                      let appliedSummary = session.summary->String.trim == ""
-                        ? "Applied assistant changes."
-                        : session.summary
-                      setPromptDrafts(current =>
-                        PromptDrafts.markApplied(current, draft.id, appliedSummary, completedAt)
-                      )
-                      setPromptHistory(current => [
-                        PromptHistory.makeItem(
-                          ~prompt=instruction->PromptText.make,
-                          ~selectionKind=draft.selection.kind,
-                          ~selectionLabel=draft.selection.label,
-                          ~selectionSnapshot=draft.selection.snapshot,
-                          ~revisionId=snapshot.revisionNumber->Int.toString->RevisionId.fromString->Option.getOr(
-                            RevisionId.initial,
-                          ),
-                          ~documentHtml=snapshot.html,
-                          ~documentCss=snapshot.css,
-                          ~createdAt=completedAt,
-                        ),
-                        ...current,
-                      ])
-                      setHistoryOpen(_ => true)
-                    },
-                    ~onFailed=message => {
-                      setDocumentNotice(_ => Some("Assistant request failed: " ++ message))
-                      failDraft(message)
-                    },
+                  upsertActiveAgentPoll(
+                    PromptDraftPoll({
+                      sessionId: session.id,
+                      fallbackSelectionLabel: draft.selection.label->SelectionLabel.toString,
+                      draftId: draft.id,
+                      instruction,
+                      selectionKind: draft.selection.kind,
+                      selectionLabel: draft.selection.label,
+                      selectionSnapshot: draft.selection.snapshot,
+                    }),
                   )
                 }
               | ProfileEditSessionMutationFailed(payload) =>
@@ -1727,6 +1687,112 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     | Some(_) | None => React.null
     }
 
+  let renderAgentPoller = poll => {
+    let key = poll->activeAgentPollKey
+
+    switch poll {
+    | PromptDraftPoll(job) =>
+      <ProfileEditSessionPoller
+        key
+        sessionId=job.sessionId
+        onSession={session =>
+          setProfileEditSessionHistory(current =>
+            current->upsertProfileEditSessionSnapshot(
+              session->sessionSnapshotFromPolled(~fallbackSelectionLabel=job.fallbackSelectionLabel),
+            )
+          )
+        }
+        onProgress={phase =>
+          setPromptDrafts(current =>
+            PromptDrafts.markSubmittingPhase(
+              current,
+              job.draftId,
+              phase->promptProgressPhaseFromRelay,
+              Now.nowIso(),
+            )
+          )
+        }
+        onApplied={(session, version) => {
+          let snapshot = profileVersionSnapshot(
+            ~id=version.id,
+            ~revisionNumber=version.revisionNumber,
+            ~html=version.html,
+            ~css=version.css,
+            ~summary=version.summary,
+            ~createdAt=version.createdAt,
+          )
+          applyProfileVersionSnapshot(snapshot, ~notice="Applied assistant changes.")
+          let completedAt = Now.nowIso()
+          let appliedSummary = session.summary->String.trim == ""
+            ? "Applied assistant changes."
+            : session.summary
+          setPromptDrafts(current =>
+            PromptDrafts.markApplied(current, job.draftId, appliedSummary, completedAt)
+          )
+          setPromptHistory(current => [
+            PromptHistory.makeItem(
+              ~prompt=job.instruction->PromptText.make,
+              ~selectionKind=job.selectionKind,
+              ~selectionLabel=job.selectionLabel,
+              ~selectionSnapshot=job.selectionSnapshot,
+              ~revisionId=snapshot.revisionNumber->Int.toString->RevisionId.fromString->Option.getOr(
+                RevisionId.initial,
+              ),
+              ~documentHtml=snapshot.html,
+              ~documentCss=snapshot.css,
+              ~createdAt=completedAt,
+            ),
+            ...current,
+          ])
+          setHistoryOpen(_ => true)
+        }}
+        onFailed={message => {
+          setDocumentNotice(_ => Some("Assistant request failed: " ++ message))
+          setPromptDrafts(current =>
+            PromptDrafts.markError(current, job.draftId, message, Now.nowIso())
+          )
+        }}
+        onFinished={() => removeActiveAgentPoll(key)}
+      />
+    | CodexChatPoll(job) =>
+      <ProfileEditSessionPoller
+        key
+        sessionId=job.sessionId
+        onSession={session =>
+          setProfileEditSessionHistory(current =>
+            current->upsertProfileEditSessionSnapshot(
+              session->sessionSnapshotFromPolled(~fallbackSelectionLabel=job.fallbackSelectionLabel),
+            )
+          )
+        }
+        onProgress={_phase => ()}
+        onApplied={(session, version) => {
+          let snapshot = profileVersionSnapshot(
+            ~id=version.id,
+            ~revisionNumber=version.revisionNumber,
+            ~html=version.html,
+            ~css=version.css,
+            ~summary=version.summary,
+            ~createdAt=version.createdAt,
+          )
+          applyProfileVersionSnapshot(snapshot, ~notice="Applied assistant changes.")
+          let summary = session.summary->String.trim == ""
+            ? "Applied assistant changes."
+            : session.summary
+          job.onSuccess({
+            summary: summary->PatchSummary.make,
+            warnings: session.warnings->Array.join("\n")->PatchWarnings.make,
+          })
+        }}
+        onFailed={message => job.onError(message)}
+        onFinished={() => removeActiveAgentPoll(key)}
+      />
+    }
+  }
+
+  let renderAgentPollers = () =>
+    activeAgentPolls->Array.map(renderAgentPoller)->React.array
+
   let renderCanvasRoute = () => {
     let headerButtonClass = "h-10 rounded-xl px-3.5 text-sm font-black shadow-sm"
     <main className="relative min-h-screen overflow-hidden bg-neutral-100">
@@ -2045,29 +2111,13 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
                         ) {
                         | Some(message) => onError(message)
                         | None =>
-                          pollProfileEditSession(
-                            ~sessionId=session.id,
-                            ~fallbackSelectionLabel=selectionLabel,
-                            ~onProgress=_phase => (),
-                            ~onApplied=(session, version) => {
-                              let snapshot = profileVersionSnapshot(
-                                ~id=version.id,
-                                ~revisionNumber=version.revisionNumber,
-                                ~html=version.html,
-                                ~css=version.css,
-                                ~summary=version.summary,
-                                ~createdAt=version.createdAt,
-                              )
-                              applyProfileVersionSnapshot(snapshot, ~notice="Applied assistant changes.")
-                              let summary = session.summary->String.trim == ""
-                                ? "Applied assistant changes."
-                                : session.summary
-                              onSuccess({
-                                summary: summary->PatchSummary.make,
-                                warnings: session.warnings->Array.join("\n")->PatchWarnings.make,
-                              })
-                            },
-                            ~onFailed=message => onError(message),
+                          upsertActiveAgentPoll(
+                            CodexChatPoll({
+                              sessionId: session.id,
+                              fallbackSelectionLabel: selectionLabel,
+                              onSuccess,
+                              onError,
+                            }),
                           )
                         }
                       | ProfileEditSessionMutationFailed(payload) =>
@@ -2111,8 +2161,11 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
       {renderReactivateInviteDialog()}
     </main>
 
-  switch route {
-  | Route.Source => renderSourceRoute()
-  | Route.Canvas => renderCanvasRoute()
-  }
+  <>
+    {switch route {
+    | Route.Source => renderSourceRoute()
+    | Route.Canvas => renderCanvasRoute()
+    }}
+    {renderAgentPollers()}
+  </>
 }
