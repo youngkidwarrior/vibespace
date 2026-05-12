@@ -786,12 +786,6 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     | CodexChat.Reasoning => REASONING
     }
 
-  let assistantEstimateMode = (mode: CodexChat.mode): AssistantEstimate.mode =>
-    switch mode {
-    | CodexChat.Fast => AssistantEstimate.Fast
-    | CodexChat.Reasoning => AssistantEstimate.Reasoning
-    }
-
   let firstPayloadError = (~error: option<string>, ~validationErrors: array<string>) =>
     switch error {
     | Some(message) => Some(message)
@@ -955,9 +949,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
                 | None =>
                   agentTracker.trackPromptDraft({
                     sessionId: session.id,
-                    prompt: instruction,
                     draftId: draft.id,
-                    mode: AssistantEstimate.Fast,
                     onSession: session =>
                       setProfileEditSessionHistory(current =>
                         current->upsertProfileEditSessionSnapshot(
@@ -2018,8 +2010,6 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
                         | None =>
                           agentTracker.trackSourceLane({
                             sessionId: session.id,
-                            prompt: instruction,
-                            mode: mode->assistantEstimateMode,
                             onSession: session =>
                               setProfileEditSessionHistory(current =>
                                 current->upsertProfileEditSessionSnapshot(

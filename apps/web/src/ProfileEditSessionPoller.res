@@ -43,6 +43,8 @@ type polledProfileVersion =
 @val external setTimeout: (unit => unit, int) => int = "setTimeout"
 @val external clearTimeout: int => unit = "clearTimeout"
 
+let pollIntervalMs = 5000
+
 let statusKey = (status: RelaySchemaAssets_graphql.enum_ProfileEditSessionStatus) =>
   switch status {
   | DRAFT => "draft"
@@ -119,7 +121,7 @@ module Result = {
           }
           None
         | DRAFT | RUNNING | FutureAddedValue(_) =>
-          let timerId = setTimeout(() => requestNextPoll(), 1000)
+          let timerId = setTimeout(() => requestNextPoll(), pollIntervalMs)
           Some(() => clearTimeout(timerId))
         }
       }
