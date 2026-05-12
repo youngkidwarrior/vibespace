@@ -240,8 +240,9 @@ function cleanProfileName(value) {
   return name ? name.slice(0, 80) : "";
 }
 
-function shouldPersistSendtag(input) {
-  return Object.prototype.hasOwnProperty.call(input || {}, "sendtag");
+export function shouldPersistSendtag(input) {
+  // ReScript optional record fields can arrive as own properties with undefined values.
+  return typeof input?.sendtag === "string";
 }
 
 function failedPatchText(value, maxLength) {
