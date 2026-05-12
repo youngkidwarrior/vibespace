@@ -3152,15 +3152,11 @@ let profileByHandle = async (
 /** Random friend-visible profile that belongs to an enabled user and has completed onboarding. */
 @live @gql.field
 let randomProfile = async (_: query, ~ctx: ResGraphContext.context): option<profile> => {
-  switch ctx.currentUserId {
-  | Some(_) => None
-  | None =>
-    switch await loadRandomPublicProfile(ctx) {
-    | Some(profile) => Some(profile)
-    | None if ctx->allowFixtureData =>
-      fixtureProfiles->Array.find(profile => profile->profileHasCompletedCurrentVersion)
-    | None => None
-    }
+  switch await loadRandomPublicProfile(ctx) {
+  | Some(profile) => Some(profile)
+  | None if ctx->allowFixtureData =>
+    fixtureProfiles->Array.find(profile => profile->profileHasCompletedCurrentVersion)
+  | None => None
   }
 }
 

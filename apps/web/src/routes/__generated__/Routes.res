@@ -16,6 +16,11 @@ module Profile = {
   module Route = Route__Profile_route
 
 }
+/** [See route renderer](./Explore_route_renderer.res)*/
+module Explore = {
+  module Route = Route__Explore_route
+
+}
 /** [See route renderer](./Invite_route_renderer.res)*/
 module Invite = {
   module Route = Route__Invite_route
