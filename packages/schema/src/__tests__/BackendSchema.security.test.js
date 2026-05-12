@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as BackendSchema from "../BackendSchema.res.js";
+import * as InviteCode from "../InviteCode.js";
 
 const validHtml = BackendSchema.fixtureHtml;
 const validCss = BackendSchema.fixtureCss;
@@ -161,6 +162,25 @@ describe("BackendSchema agent service nullability", () => {
 
     expect(session.resultVersionId).toBe(undefined);
     await expect(BackendSchema.resultVersion(session, contextWithoutDatabase())).resolves.toBe(undefined);
+  });
+});
+
+describe("InviteCode", () => {
+  it("generates opaque URL-safe invite codes instead of handle-derived codes", () => {
+    const first = InviteCode.generateInviteCode();
+    const second = InviteCode.generateInviteCode();
+
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).not.toBe(first);
+    expect(first).not.toMatch(/^invite-\d+$/);
+  });
+
+  it("detects legacy predictable invite codes for lazy rotation", () => {
+    expect(InviteCode.inviteCodeNeedsRotation("invite-1")).toBe(true);
+    expect(InviteCode.inviteCodeNeedsRotation("seed-invite-vic")).toBe(true);
+    expect(InviteCode.inviteCodeNeedsRotation("manual-invite-12345678-1")).toBe(true);
+    expect(InviteCode.inviteCodeNeedsRotation("a".repeat(32))).toBe(false);
   });
 });
 

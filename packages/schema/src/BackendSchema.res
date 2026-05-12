@@ -1152,6 +1152,19 @@ let inviteChainFriendConnectionFromArray = (
 
 module DbQueries = Profile_versions__sql
 
+@module("./InviteCode.js") external inviteCodeNeedsRotation: string => bool =
+  "inviteCodeNeedsRotation"
+
+@module("./InviteCode.js") external insertRandomInviteForUserOnServer: (
+  BackendDatabase.Client.t,
+  string,
+) => promise<Nullable.t<DbQueries.ensureInviteForUserResult>> = "insertRandomInviteForUser"
+
+@module("./InviteCode.js") external rotateAvailableInviteCodeOnServer: (
+  BackendDatabase.Client.t,
+  string,
+) => promise<Nullable.t<DbQueries.ensureInviteForUserResult>> = "rotateAvailableInviteCode"
+
 type dbVersionMutationResult = {
   profile: option<profile>,
   profileVersion: profileVersion,
@@ -1652,6 +1665,37 @@ let inviteFromReactivateUsedInvite = (
   redeemedAt: row.inviteRedeemedAt,
   expiresAt: row.inviteExpiresAt,
 }
+
+let rotateInviteCodeIfPredictable = async (
+  client: BackendDatabase.Client.t,
+  invite: invite,
+): option<invite> =>
+  switch invite.code {
+  | Some(code) if code->inviteCodeNeedsRotation =>
+    switch (await rotateAvailableInviteCodeOnServer(client, invite.id->idString))->Nullable.toOption {
+    | Some(row) => Some(row->inviteFromEnsureInvite)
+    | None => Some(invite)
+    }
+  | Some(_) | None => Some(invite)
+  }
+
+let insertRandomInviteForUser = async (
+  client: BackendDatabase.Client.t,
+  inviterUserId: string,
+): option<invite> => {
+  (await insertRandomInviteForUserOnServer(client, inviterUserId))
+  ->Nullable.toOption
+  ->Option.map(inviteFromEnsureInvite)
+}
+
+let ensureRandomAvailableInviteForUser = async (
+  client: BackendDatabase.Client.t,
+  inviterUserId: string,
+): option<invite> =>
+  switch await DbQueries.GetAvailableInviteForUser.one(client, {userId: inviterUserId}) {
+  | Some(row) => await rotateInviteCodeIfPredictable(client, row->inviteFromGetAvailableInvite)
+  | None => await insertRandomInviteForUser(client, inviterUserId)
+  }
 
 let friendConnectionFromEnsureInvite = (
   row: DbQueries.ensureInviteFriendConnectionResult,
@@ -2464,10 +2508,13 @@ let loadAvailableInviteForViewer = async (ctx: ResGraphContext.context): option<
   | None => None
   | Some(user) =>
     let result = await BackendDatabase.withClient(ctx.databaseUrl, async client =>
-      await DbQueries.GetAvailableInviteForUser.one(client, {userId: user.id->rawDbIdString})
+      switch await DbQueries.GetAvailableInviteForUser.one(client, {userId: user.id->rawDbIdString}) {
+      | Some(row) => await rotateInviteCodeIfPredictable(client, row->inviteFromGetAvailableInvite)
+      | None => None
+      }
     )
 
-    result->optionJoin->Option.map(inviteFromGetAvailableInvite)
+    result->optionJoin
   }
 
 let loadUsedInviteForViewer = async (ctx: ResGraphContext.context): option<invite> =>
@@ -2549,48 +2596,40 @@ let dbCreateSeedUser = async (
       role: input.role->Option.getOr(UserRoleUser)->userRoleToDb,
     })
     let user = seededUser->userFromUpsertSeedUser
-    let invite = await DbQueries.EnsureInviteForUser.expectOne(client, {
-      codeHash: "seed-invite-" ++ user.handle->String.toLowerCase,
-      inviterUserId: user.id->idString,
-    })
-    let profile = await DbQueries.EnsureProfileForUser.expectOne(client, {
-      ownerUserId: user.id->idString,
-      slug: user.handle,
-      title: user.displayName ++ "'s Vibespace",
-    })
-    ignore(await DbQueries.EnsureInitialProfileVersion.one(client, {
-      profileId: profile.id,
-      html: fixtureHtml,
-      css: fixtureCss,
-      createdByUserId: user.id->idString,
-    }))
+    switch await ensureRandomAvailableInviteForUser(client, user.id->idString) {
+    | None => None
+    | Some(invite) =>
+      let profile = await DbQueries.EnsureProfileForUser.expectOne(client, {
+        ownerUserId: user.id->idString,
+        slug: user.handle,
+        title: user.displayName ++ "'s Vibespace",
+      })
+      ignore(await DbQueries.EnsureInitialProfileVersion.one(client, {
+        profileId: profile.id,
+        html: fixtureHtml,
+        css: fixtureCss,
+        createdByUserId: user.id->idString,
+      }))
 
-    ({
-      user,
-      invite: invite->inviteFromEnsureInvite,
-    }: dbSeedUserResult)
+      Some({
+        user,
+        invite,
+      }: dbSeedUserResult)
+    }
   })
 
-  result
+  result->optionJoin
 }
 
 let dbCreateAdminInvite = async (
   ctx: ResGraphContext.context,
   inviterUserId: ResGraph.id,
 ): option<invite> => {
-  let codeHash =
-    "manual-invite-" ++
-    inviterUserId->rawDbIdString->String.slice(~start=0, ~end=8) ++
-    "-" ++
-    Date.now()->Float.toString
   let result = await BackendDatabase.withClient(ctx.databaseUrl, async client =>
-    await DbQueries.EnsureInviteForUser.one(client, {
-      codeHash,
-      inviterUserId: inviterUserId->rawDbIdString,
-    })
+    await ensureRandomAvailableInviteForUser(client, inviterUserId->rawDbIdString)
   )
 
-  result->optionJoin->Option.map(inviteFromEnsureInvite)
+  result->optionJoin
 }
 
 let dbRedeemInvite = async (
@@ -2635,10 +2674,7 @@ let dbRedeemInvite = async (
           id: availableInvite.id->rawDbIdString,
           inviteeUserId: user.id->idString,
         })
-        ignore(await DbQueries.EnsureInviteForUser.expectOne(client, {
-          codeHash: "invite-" ++ user.handle->String.toLowerCase,
-          inviterUserId: user.id->idString,
-        }))
+        ignore(await ensureRandomAvailableInviteForUser(client, user.id->idString))
 
         InviteRedeemed({
           user,
