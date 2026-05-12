@@ -1,0 +1,15 @@
+node_modules
+.DS_Store
+dist
+lib
+*.bs.js
+*.bs.js.map
+.env
+.env.local
+.home
+.vite
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
