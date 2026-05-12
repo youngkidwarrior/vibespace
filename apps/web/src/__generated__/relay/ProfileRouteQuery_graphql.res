@@ -35,6 +35,9 @@ module Types = {
   and response_friendActivity = {
     edges: option<array<option<response_friendActivity_edges>>>,
   }
+  and response_randomProfile = {
+    fragmentRefs: RescriptRelay.fragmentRefs<[ | #PublicProfileViewer_profile]>,
+  }
   and response_viewer = {
     displayName: string,
     handle: string,
@@ -55,6 +58,7 @@ module Types = {
   type response = {
     availableInvite: option<response_availableInvite>,
     friendActivity: response_friendActivity,
+    randomProfile: option<response_randomProfile>,
     viewer: option<response_viewer>,
     viewerProfile: option<response_viewerProfile>,
     viewerUsedInvite: option<response_viewerUsedInvite>,
@@ -88,7 +92,7 @@ module Internal = {
   type wrapResponseRaw
   @live
   let wrapResponseConverter: dict<dict<dict<string>>> = %raw(
-    json`{"__root":{"viewerProfile":{"f":""}}}`
+    json`{"__root":{"viewerProfile":{"f":""},"randomProfile":{"f":""}}}`
   )
   @live
   let wrapResponseConverterMap = ()
@@ -102,7 +106,7 @@ module Internal = {
   type responseRaw
   @live
   let responseConverter: dict<dict<dict<string>>> = %raw(
-    json`{"__root":{"viewerProfile":{"f":""}}}`
+    json`{"__root":{"viewerProfile":{"f":""},"randomProfile":{"f":""}}}`
   )
   @live
   let responseConverterMap = ()
@@ -373,26 +377,49 @@ v13 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
+  "name": "slug",
+  "storageKey": null
+},
+v14 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "sendtag",
+  "storageKey": null
+},
+v15 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "sendAvatarUrl",
+  "storageKey": null
+},
+v16 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
   "name": "revisionNumber",
   "storageKey": null
 },
-v14 = [
+v17 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "html",
+  "storageKey": null
+},
+v18 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "css",
+  "storageKey": null
+},
+v19 = [
   (v0/*: any*/),
-  (v13/*: any*/),
-  {
-    "alias": null,
-    "args": null,
-    "kind": "ScalarField",
-    "name": "html",
-    "storageKey": null
-  },
-  {
-    "alias": null,
-    "args": null,
-    "kind": "ScalarField",
-    "name": "css",
-    "storageKey": null
-  },
+  (v16/*: any*/),
+  (v17/*: any*/),
+  (v18/*: any*/),
   {
     "alias": null,
     "args": null,
@@ -427,13 +454,89 @@ v14 = [
   },
   (v10/*: any*/)
 ],
-v15 = [
+v20 = [
   {
     "kind": "Literal",
     "name": "first",
     "value": 20
   }
-];
+],
+v21 = {
+  "alias": null,
+  "args": [
+    {
+      "kind": "Literal",
+      "name": "first",
+      "value": 12
+    }
+  ],
+  "concreteType": "InviteChainFriendConnection",
+  "kind": "LinkedField",
+  "name": "inviteChainFriends",
+  "plural": false,
+  "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "concreteType": "InviteChainFriendEdge",
+      "kind": "LinkedField",
+      "name": "edges",
+      "plural": true,
+      "selections": [
+        {
+          "alias": null,
+          "args": null,
+          "concreteType": "InviteChainFriend",
+          "kind": "LinkedField",
+          "name": "node",
+          "plural": false,
+          "selections": [
+            (v0/*: any*/),
+            (v2/*: any*/),
+            {
+              "alias": null,
+              "args": null,
+              "kind": "ScalarField",
+              "name": "profileSlug",
+              "storageKey": null
+            },
+            {
+              "alias": null,
+              "args": null,
+              "kind": "ScalarField",
+              "name": "profileTitle",
+              "storageKey": null
+            },
+            {
+              "alias": null,
+              "args": null,
+              "kind": "ScalarField",
+              "name": "avatarInitials",
+              "storageKey": null
+            },
+            {
+              "alias": null,
+              "args": null,
+              "kind": "ScalarField",
+              "name": "avatarColor",
+              "storageKey": null
+            },
+            {
+              "alias": null,
+              "args": null,
+              "kind": "ScalarField",
+              "name": "avatarUrl",
+              "storageKey": null
+            }
+          ],
+          "storageKey": null
+        }
+      ],
+      "storageKey": null
+    }
+  ],
+  "storageKey": "inviteChainFriends(first:12)"
+};
 return {
   "fragment": {
     "argumentDefinitions": [],
@@ -457,6 +560,22 @@ return {
             "args": null,
             "kind": "FragmentSpread",
             "name": "ProfileDocumentData_profile"
+          }
+        ],
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "Profile",
+        "kind": "LinkedField",
+        "name": "randomProfile",
+        "plural": false,
+        "selections": [
+          {
+            "args": null,
+            "kind": "FragmentSpread",
+            "name": "PublicProfileViewer_profile"
           }
         ],
         "storageKey": null
@@ -485,27 +604,9 @@ return {
         "selections": [
           (v0/*: any*/),
           (v8/*: any*/),
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "slug",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "sendtag",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "sendAvatarUrl",
-            "storageKey": null
-          },
+          (v13/*: any*/),
+          (v14/*: any*/),
+          (v15/*: any*/),
           {
             "alias": null,
             "args": null,
@@ -527,12 +628,12 @@ return {
             "kind": "LinkedField",
             "name": "currentVersion",
             "plural": false,
-            "selections": (v14/*: any*/),
+            "selections": (v19/*: any*/),
             "storageKey": null
           },
           {
             "alias": null,
-            "args": (v15/*: any*/),
+            "args": (v20/*: any*/),
             "concreteType": "ProfileVersionConnection",
             "kind": "LinkedField",
             "name": "versionHistory",
@@ -553,7 +654,7 @@ return {
                     "kind": "LinkedField",
                     "name": "node",
                     "plural": false,
-                    "selections": (v14/*: any*/),
+                    "selections": (v19/*: any*/),
                     "storageKey": null
                   }
                 ],
@@ -564,7 +665,7 @@ return {
           },
           {
             "alias": null,
-            "args": (v15/*: any*/),
+            "args": (v20/*: any*/),
             "concreteType": "ProfileEditSessionConnection",
             "kind": "LinkedField",
             "name": "editSessions",
@@ -652,7 +753,7 @@ return {
                         "plural": false,
                         "selections": [
                           (v0/*: any*/),
-                          (v13/*: any*/),
+                          (v16/*: any*/),
                           (v9/*: any*/),
                           (v10/*: any*/)
                         ],
@@ -675,94 +776,66 @@ return {
             ],
             "storageKey": "editSessions(first:20)"
           },
+          (v21/*: any*/)
+        ],
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "Profile",
+        "kind": "LinkedField",
+        "name": "randomProfile",
+        "plural": false,
+        "selections": [
+          (v8/*: any*/),
+          (v13/*: any*/),
+          (v14/*: any*/),
+          (v15/*: any*/),
           {
             "alias": null,
-            "args": [
-              {
-                "kind": "Literal",
-                "name": "first",
-                "value": 12
-              }
-            ],
-            "concreteType": "InviteChainFriendConnection",
+            "args": null,
+            "concreteType": "User",
             "kind": "LinkedField",
-            "name": "inviteChainFriends",
+            "name": "owner",
             "plural": false,
             "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "concreteType": "InviteChainFriendEdge",
-                "kind": "LinkedField",
-                "name": "edges",
-                "plural": true,
-                "selections": [
-                  {
-                    "alias": null,
-                    "args": null,
-                    "concreteType": "InviteChainFriend",
-                    "kind": "LinkedField",
-                    "name": "node",
-                    "plural": false,
-                    "selections": [
-                      (v0/*: any*/),
-                      (v2/*: any*/),
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "profileSlug",
-                        "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "profileTitle",
-                        "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "avatarInitials",
-                        "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "avatarColor",
-                        "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "avatarUrl",
-                        "storageKey": null
-                      }
-                    ],
-                    "storageKey": null
-                  }
-                ],
-                "storageKey": null
-              }
+              (v1/*: any*/),
+              (v2/*: any*/),
+              (v0/*: any*/)
             ],
-            "storageKey": "inviteChainFriends(first:12)"
-          }
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "ProfileVersion",
+            "kind": "LinkedField",
+            "name": "currentVersion",
+            "plural": false,
+            "selections": [
+              (v17/*: any*/),
+              (v18/*: any*/),
+              (v9/*: any*/),
+              (v10/*: any*/),
+              (v0/*: any*/)
+            ],
+            "storageKey": null
+          },
+          (v21/*: any*/),
+          (v0/*: any*/)
         ],
         "storageKey": null
       }
     ]
   },
   "params": {
-    "cacheID": "4153f0889ae08915d59201cd20b5be93",
+    "cacheID": "7758f3f20979293e171bb9fd97d8bf56",
     "id": null,
     "metadata": {},
     "name": "ProfileRouteQuery",
     "operationKind": "query",
-    "text": "query ProfileRouteQuery {\n  viewer {\n    id\n    handle\n    displayName\n    status\n  }\n  availableInvite {\n    id\n    code\n    inviterUserId\n    inviteeUserId\n    status\n    redeemedAt\n  }\n  viewerUsedInvite {\n    id\n    code\n    inviterUserId\n    inviteeUserId\n    status\n    redeemedAt\n  }\n  friendActivity(first: 10) {\n    edges {\n      node {\n        id\n        kind\n        title\n        summary\n        createdAt\n        actor {\n          id\n          displayName\n        }\n        eventProfile {\n          id\n          title\n        }\n      }\n    }\n  }\n  viewerProfile {\n    ...ProfileDocumentData_profile\n    id\n  }\n}\n\nfragment ProfileDocumentData_profile on Profile {\n  id\n  title\n  slug\n  sendtag\n  sendAvatarUrl\n  owner {\n    id\n    handle\n    displayName\n  }\n  currentVersion {\n    id\n    revisionNumber\n    html\n    css\n    source\n    summary\n    validationStatus\n    validationErrors\n    createdBy {\n      id\n      displayName\n    }\n    createdAt\n  }\n  versionHistory(first: 20) {\n    edges {\n      node {\n        id\n        revisionNumber\n        html\n        css\n        source\n        summary\n        validationStatus\n        validationErrors\n        createdBy {\n          id\n          displayName\n        }\n        createdAt\n      }\n    }\n  }\n  editSessions(first: 20) {\n    edges {\n      node {\n        id\n        prompt\n        status\n        progressPhase\n        summary\n        warnings\n        error\n        resultVersionId\n        selectionSnapshot {\n          id\n          label\n        }\n        resultVersion {\n          id\n          revisionNumber\n          summary\n          createdAt\n        }\n        createdAt\n        updatedAt\n      }\n    }\n  }\n  inviteChainFriends(first: 12) {\n    edges {\n      node {\n        id\n        displayName\n        profileSlug\n        profileTitle\n        avatarInitials\n        avatarColor\n        avatarUrl\n      }\n    }\n  }\n}\n"
+    "text": "query ProfileRouteQuery {\n  viewer {\n    id\n    handle\n    displayName\n    status\n  }\n  availableInvite {\n    id\n    code\n    inviterUserId\n    inviteeUserId\n    status\n    redeemedAt\n  }\n  viewerUsedInvite {\n    id\n    code\n    inviterUserId\n    inviteeUserId\n    status\n    redeemedAt\n  }\n  friendActivity(first: 10) {\n    edges {\n      node {\n        id\n        kind\n        title\n        summary\n        createdAt\n        actor {\n          id\n          displayName\n        }\n        eventProfile {\n          id\n          title\n        }\n      }\n    }\n  }\n  viewerProfile {\n    ...ProfileDocumentData_profile\n    id\n  }\n  randomProfile {\n    ...PublicProfileViewer_profile\n    id\n  }\n}\n\nfragment ProfileDocumentData_profile on Profile {\n  id\n  title\n  slug\n  sendtag\n  sendAvatarUrl\n  owner {\n    id\n    handle\n    displayName\n  }\n  currentVersion {\n    id\n    revisionNumber\n    html\n    css\n    source\n    summary\n    validationStatus\n    validationErrors\n    createdBy {\n      id\n      displayName\n    }\n    createdAt\n  }\n  versionHistory(first: 20) {\n    edges {\n      node {\n        id\n        revisionNumber\n        html\n        css\n        source\n        summary\n        validationStatus\n        validationErrors\n        createdBy {\n          id\n          displayName\n        }\n        createdAt\n      }\n    }\n  }\n  editSessions(first: 20) {\n    edges {\n      node {\n        id\n        prompt\n        status\n        progressPhase\n        summary\n        warnings\n        error\n        resultVersionId\n        selectionSnapshot {\n          id\n          label\n        }\n        resultVersion {\n          id\n          revisionNumber\n          summary\n          createdAt\n        }\n        createdAt\n        updatedAt\n      }\n    }\n  }\n  inviteChainFriends(first: 12) {\n    edges {\n      node {\n        id\n        displayName\n        profileSlug\n        profileTitle\n        avatarInitials\n        avatarColor\n        avatarUrl\n      }\n    }\n  }\n}\n\nfragment PublicProfileViewer_profile on Profile {\n  title\n  slug\n  sendtag\n  sendAvatarUrl\n  owner {\n    handle\n    displayName\n    id\n  }\n  currentVersion {\n    html\n    css\n    summary\n    createdAt\n    id\n  }\n  inviteChainFriends(first: 12) {\n    edges {\n      node {\n        id\n        displayName\n        profileSlug\n        profileTitle\n        avatarInitials\n        avatarColor\n        avatarUrl\n      }\n    }\n  }\n}\n"
   }
 };
 })() `)

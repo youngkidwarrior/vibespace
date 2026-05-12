@@ -1,4 +1,4 @@
-/* @sourceLoc PublicProfileRoute.res */
+/* @sourceLoc PublicProfileViewer.res */
 /* @generated */
 %%raw("/* @generated */")
 module Types = {
@@ -60,7 +60,7 @@ module Internal = {
 type t
 type fragmentRef
 external getFragmentRef:
-  RescriptRelay.fragmentRefs<[> | #PublicProfileRoute_profile]> => fragmentRef = "%identity"
+  RescriptRelay.fragmentRefs<[> | #PublicProfileViewer_profile]> => fragmentRef = "%identity"
 
 module Utils = {
   @@warning("-33")
@@ -83,7 +83,7 @@ return {
   "argumentDefinitions": [],
   "kind": "Fragment",
   "metadata": null,
-  "name": "PublicProfileRoute_profile",
+  "name": "PublicProfileViewer_profile",
   "selections": [
     {
       "alias": null,

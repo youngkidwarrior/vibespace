@@ -5,7 +5,7 @@ module Types = {
   @@warning("-30")
 
   type rec response_profileByHandle = {
-    fragmentRefs: RescriptRelay.fragmentRefs<[ | #PublicProfileRoute_profile]>,
+    fragmentRefs: RescriptRelay.fragmentRefs<[ | #PublicProfileViewer_profile]>,
   }
   type response = {
     profileByHandle: option<response_profileByHandle>,
@@ -137,7 +137,7 @@ return {
           {
             "args": null,
             "kind": "FragmentSpread",
-            "name": "PublicProfileRoute_profile"
+            "name": "PublicProfileViewer_profile"
           }
         ],
         "storageKey": null
@@ -331,12 +331,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "4286b4572840914baf10bcf753921682",
+    "cacheID": "bda36d1e979aaf383ec5919f279e5a82",
     "id": null,
     "metadata": {},
     "name": "PublicProfileRouteQuery",
     "operationKind": "query",
-    "text": "query PublicProfileRouteQuery(\n  $handle: String!\n) {\n  profileByHandle(handle: $handle) {\n    ...PublicProfileRoute_profile\n    id\n  }\n}\n\nfragment PublicProfileRoute_profile on Profile {\n  title\n  slug\n  sendtag\n  sendAvatarUrl\n  owner {\n    handle\n    displayName\n    id\n  }\n  currentVersion {\n    html\n    css\n    summary\n    createdAt\n    id\n  }\n  inviteChainFriends(first: 12) {\n    edges {\n      node {\n        id\n        displayName\n        profileSlug\n        profileTitle\n        avatarInitials\n        avatarColor\n        avatarUrl\n      }\n    }\n  }\n}\n"
+    "text": "query PublicProfileRouteQuery(\n  $handle: String!\n) {\n  profileByHandle(handle: $handle) {\n    ...PublicProfileViewer_profile\n    id\n  }\n}\n\nfragment PublicProfileViewer_profile on Profile {\n  title\n  slug\n  sendtag\n  sendAvatarUrl\n  owner {\n    handle\n    displayName\n    id\n  }\n  currentVersion {\n    html\n    css\n    summary\n    createdAt\n    id\n  }\n  inviteChainFriends(first: 12) {\n    edges {\n      node {\n        id\n        displayName\n        profileSlug\n        profileTitle\n        avatarInitials\n        avatarColor\n        avatarUrl\n      }\n    }\n  }\n}\n"
   }
 };
 })() `)

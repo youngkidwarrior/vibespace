@@ -1823,6 +1823,22 @@ let profileFromGetProfileBySlug = (row: DbQueries.getProfileBySlugResult): profi
     ~disabledReason=row.disabledReason,
   )
 
+let profileFromGetRandomPublicProfile = (row: DbQueries.getRandomPublicProfileResult): profile =>
+  profileFromDbFields(
+    ~id=row.id,
+    ~ownerUserId=row.ownerUserId,
+    ~slug=row.slug,
+    ~title=row.title,
+    ~sendtag=row.sendtag,
+    ~visibility=row.visibility,
+    ~currentVersionId=row.currentVersionId,
+    ~createdAt=row.createdAt,
+    ~updatedAt=row.updatedAt,
+    ~publishedAt=row.publishedAt,
+    ~disabledAt=row.disabledAt,
+    ~disabledReason=row.disabledReason,
+  )
+
 let profileFromEnsureProfile = (row: DbQueries.ensureProfileForUserResult): profile =>
   profileFromDbFields(
     ~id=row.id,
@@ -2412,6 +2428,14 @@ let loadProfileBySlug = async (
   )
 
   result->optionJoin->Option.map(profileFromGetProfileBySlug)
+}
+
+let loadRandomPublicProfile = async (ctx: ResGraphContext.context): option<profile> => {
+  let result = await BackendDatabase.withClient(ctx.databaseUrl, async client =>
+    await DbQueries.GetRandomPublicProfile.one(client, ())
+  )
+
+  result->optionJoin->Option.map(profileFromGetRandomPublicProfile)
 }
 
 let loadProfileVersionById = async (
@@ -3113,6 +3137,21 @@ let profileByHandle = async (
       None
     }
   | None => None
+  }
+}
+
+/** Random friend-visible profile that belongs to an enabled user and has completed onboarding. */
+@live @gql.field
+let randomProfile = async (_: query, ~ctx: ResGraphContext.context): option<profile> => {
+  switch ctx.currentUserId {
+  | Some(_) => None
+  | None =>
+    switch await loadRandomPublicProfile(ctx) {
+    | Some(profile) => Some(profile)
+    | None if ctx->allowFixtureData =>
+      fixtureProfiles->Array.find(profile => profile->profileHasCompletedCurrentVersion)
+    | None => None
+    }
   }
 }
 

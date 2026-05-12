@@ -2648,6 +2648,15 @@ t_Query.contents = GraphQLObjectType.make({
           )
         }),
       },
+      "randomProfile": {
+        typ: get_Profile()->GraphQLObjectType.toGraphQLType,
+        description: "Random friend-visible profile that belongs to an enabled user and has completed onboarding.",
+        deprecationReason: ?None,
+        resolve: makeResolveFn((src, args, ctx, info) => {
+          let src = typeUnwrapper(src)
+          BackendSchema.randomProfile(src, ~ctx)
+        }),
+      },
       "viewer": {
         typ: get_User()->GraphQLObjectType.toGraphQLType,
         description: "The current viewer account.",
