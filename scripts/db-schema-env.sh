@@ -68,6 +68,7 @@ run_pgschema() {
   local docker_args=(
     run
     --rm
+    --user "$(id -u):$(id -g)"
     -v "${repo_root}:/workspace"
     -e "PGPASSWORD=${pg_password}"
     -e "PGSCHEMA_PLAN_PASSWORD=${pg_password}"

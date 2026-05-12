@@ -4277,7 +4277,7 @@ type listInviteChainFriendsForUserQuery = {
   result: listInviteChainFriendsForUserResult,
 }
 
-%%private(let listInviteChainFriendsForUserIR: IR.t = %raw(`{"usedParamSet":{"ownerUserId":true},"params":[{"name":"ownerUserId","required":true,"transform":{"type":"scalar"},"locs":[{"a":51,"b":63},{"a":802,"b":814}]}],"statement":"WITH RECURSIVE invite_chain(user_id) AS (\n  SELECT :ownerUserId!::uuid\n\n  UNION\n\n  SELECT next_link.user_id\n  FROM invite_chain chain\n  JOIN LATERAL (\n    SELECT child.id AS user_id\n    FROM vibespace.users child\n    WHERE child.invited_by_user_id = chain.user_id\n\n    UNION\n\n    SELECT parent.invited_by_user_id AS user_id\n    FROM vibespace.users parent\n    WHERE parent.id = chain.user_id\n      AND parent.invited_by_user_id IS NOT NULL\n  ) next_link ON true\n)\nSELECT\n  u.id AS \"userId\",\n  u.handle AS \"handle\",\n  u.display_name AS \"displayName\",\n  u.created_at::text AS \"createdAt\",\n  p.id AS \"profileId\",\n  p.slug AS \"profileSlug\",\n  p.title AS \"profileTitle\"\nFROM invite_chain chain\nJOIN vibespace.users u ON u.id = chain.user_id\nJOIN vibespace.profiles p ON p.owner_user_id = u.id\nWHERE u.id <> :ownerUserId!::uuid\n  AND u.status = 'enabled'\n  AND p.visibility = 'friends'\nORDER BY u.created_at DESC, u.id DESC"}`))
+%%private(let listInviteChainFriendsForUserIR: IR.t = %raw(`{"usedParamSet":{"ownerUserId":true},"params":[{"name":"ownerUserId","required":true,"transform":{"type":"scalar"},"locs":[{"a":51,"b":63},{"a":937,"b":949}]}],"statement":"WITH RECURSIVE invite_chain(user_id) AS (\n  SELECT :ownerUserId!::uuid\n\n  UNION\n\n  SELECT next_link.user_id\n  FROM invite_chain chain\n  JOIN LATERAL (\n    SELECT child.id AS user_id\n    FROM vibespace.users child\n    WHERE child.invited_by_user_id = chain.user_id\n\n    UNION\n\n    SELECT parent.invited_by_user_id AS user_id\n    FROM vibespace.users parent\n    WHERE parent.id = chain.user_id\n      AND parent.invited_by_user_id IS NOT NULL\n  ) next_link ON true\n)\nSELECT\n  u.id AS \"userId\",\n  u.handle AS \"handle\",\n  u.display_name AS \"displayName\",\n  u.created_at::text AS \"createdAt\",\n  p.id AS \"profileId\",\n  p.slug AS \"profileSlug\",\n  p.title AS \"profileTitle\"\nFROM invite_chain chain\nJOIN vibespace.users u ON u.id = chain.user_id\nJOIN vibespace.profiles p ON p.owner_user_id = u.id\nJOIN vibespace.profile_versions current_version\n  ON current_version.id = p.current_version_id\n  AND current_version.profile_id = p.id\nWHERE u.id <> :ownerUserId!::uuid\n  AND u.status = 'enabled'\n  AND p.visibility = 'friends'\n  AND current_version.source <> 'import'\n  AND current_version.validation_status = 'valid'\nORDER BY u.created_at DESC, u.id DESC"}`))
 
 /**
  Runnable query:
@@ -4313,9 +4313,14 @@ SELECT
 FROM invite_chain chain
 JOIN vibespace.users u ON u.id = chain.user_id
 JOIN vibespace.profiles p ON p.owner_user_id = u.id
+JOIN vibespace.profile_versions current_version
+  ON current_version.id = p.current_version_id
+  AND current_version.profile_id = p.id
 WHERE u.id <> $1::uuid
   AND u.status = 'enabled'
   AND p.visibility = 'friends'
+  AND current_version.source <> 'import'
+  AND current_version.validation_status = 'valid'
 ORDER BY u.created_at DESC, u.id DESC
  ```
 

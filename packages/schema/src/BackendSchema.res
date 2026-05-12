@@ -3157,6 +3157,26 @@ let sendAvatarUrl = async (
   }
 }
 
+/** The current Send avatar URL for this friend profile's stored Sendtag. */
+@live @gql.field
+let avatarUrl = async (
+  friend: inviteChainFriend,
+  ~ctx: ResGraphContext.context,
+): option<string> => {
+  let profile = switch await loadProfileById(ctx, friend.profileId) {
+  | Some(profile) => Some(profile)
+  | None if ctx->allowFixtureData => profileById(friend.profileId)
+  | None => None
+  }
+
+  switch profile {
+  | Some({sendtag: Some(sendtag)}) =>
+    let avatarUrl = await lookupSendAvatarUrl(sendtag)
+    avatarUrl->Nullable.toOption
+  | Some({sendtag: None}) | None => None
+  }
+}
+
 /** The profile's current published version. */
 @live @gql.field
 let currentVersion = async (

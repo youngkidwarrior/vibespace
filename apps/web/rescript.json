@@ -1,0 +1,29 @@
+{
+  "name": "@vibespace/web",
+  "sources": [
+    {
+      "dir": "src",
+      "subdirs": true
+    }
+  ],
+  "ppx-flags": [
+    ["rescript-relay/ppx", "-uncurried"]
+  ],
+  "dependencies": [
+    "@vibespace/generative-ui",
+    "@rescript/react",
+    "@rescript/webapi",
+    "rescript-base-ui",
+    "rescript-relay",
+    "rescript-relay-router"
+  ],
+  "reanalyze": {
+    "analysis": ["dce"],
+    "suppress": [
+      "src/__generated__",
+      "src/routes/__generated__"
+    ],
+    "unsuppress": [],
+    "transitive": false
+  }
+}
