@@ -967,6 +967,15 @@ t_InviteChainFriend.contents = GraphQLObjectType.make({
           src["avatarInitials"]
         }),
       },
+      "avatarUrl": {
+        typ: Scalars.string->Scalars.toGraphQLType,
+        description: "The current Send avatar URL for this friend profile's stored Sendtag.",
+        deprecationReason: ?None,
+        resolve: makeResolveFn((src, args, ctx, info) => {
+          let src = typeUnwrapper(src)
+          BackendSchema.avatarUrl(src, ~ctx)
+        }),
+      },
       "createdAt": {
         typ: Scalars.string->Scalars.toGraphQLType->nonNull,
         description: ?None,

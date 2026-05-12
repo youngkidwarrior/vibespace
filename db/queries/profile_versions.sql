@@ -996,9 +996,14 @@ SELECT
 FROM invite_chain chain
 JOIN vibespace.users u ON u.id = chain.user_id
 JOIN vibespace.profiles p ON p.owner_user_id = u.id
+JOIN vibespace.profile_versions current_version
+  ON current_version.id = p.current_version_id
+  AND current_version.profile_id = p.id
 WHERE u.id <> :ownerUserId!::uuid
   AND u.status = 'enabled'
   AND p.visibility = 'friends'
+  AND current_version.source <> 'import'
+  AND current_version.validation_status = 'valid'
 ORDER BY u.created_at DESC, u.id DESC;
 
 /* @name getProfileUpdateEventById */

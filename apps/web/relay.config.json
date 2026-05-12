@@ -1,0 +1,8 @@
+{
+  "src": "./src",
+  "schema": "../../packages/schema/src/__generated__/schema.graphql",
+  "language": "rescript",
+  "artifactDirectory": "./src/__generated__/relay",
+  "eagerEsModules": true,
+  "codegenCommand": "yarn relay"
+}
