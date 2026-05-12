@@ -134,6 +134,11 @@ union SaveManualProfileVersionResult =
   | ProfileVersionMutationFailed
 
 
+union StartAgentEditResult = 
+  | ProfileEditSessionMutationSucceeded
+  | ProfileEditSessionMutationFailed
+
+
 union SubmitAgentEditResult = 
   | ProfileEditSessionMutationSucceeded
   | ProfileEditSessionMutationFailed
@@ -347,6 +352,9 @@ type Mutation {
 
   """Agent edit submission backed by the server-side OpenAI provider."""
   submitAgentEdit(input: SubmitAgentEditInput!): SubmitAgentEditResult!
+
+  """Starts an agent edit and returns the initial edit session immediately for polling."""
+  startAgentEdit(input: SubmitAgentEditInput!): StartAgentEditResult!
 
   """Restore profile version backed by pgtyped-rescript when DATABASE_URL is configured."""
   restoreProfileVersion(input: RestoreProfileVersionInput!): RestoreProfileVersionResult!
