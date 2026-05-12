@@ -1,0 +1,5 @@
+{
+  "src": "../../packages/schema/src",
+  "outputFolder": "../../packages/schema/src/__generated__",
+  "dumpSchemaSdl": true
+}

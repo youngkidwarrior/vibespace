@@ -1,0 +1,26 @@
+{
+  "name": "@vibespace/graphql",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "rescript": "rescript",
+    "rescript:watch": "rescript watch",
+    "clean": "rescript clean",
+    "resgraph": "resgraph build",
+    "resgraph:lsp": "resgraph lsp .",
+    "dev": "bun src/BackendServer.res.js"
+  },
+  "dependencies": {
+    "@glennsl/rescript-fetch": "^0.3.0",
+    "@rescript/runtime": "12.2.0",
+    "@vibespace/schema": "workspace:*",
+    "dataloader": "^2.2.2",
+    "graphql": "^16.14.0",
+    "graphql-yoga": "^5.21.0",
+    "resgraph": "^1.1.1"
+  },
+  "devDependencies": {
+    "rescript": "12.2.0"
+  }
+}

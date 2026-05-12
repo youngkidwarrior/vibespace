@@ -1,0 +1,13 @@
+{
+  "transforms": [
+    {
+      "mode": "sql",
+      "include": "**/*.sql",
+      "emitTemplate": "{{dir}}/__generated__/{{name}}__sql.res"
+    }
+  ],
+  "srcDir": "./db/queries",
+  "failOnError": true,
+  "camelCaseColumnNames": true,
+  "dbUrl": "postgres://vibespace:vibespace@127.0.0.1:5432/vibespace"
+}
