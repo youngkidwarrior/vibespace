@@ -94,7 +94,6 @@ let make = (~queryRef, ~route: Route.t) => {
       viewer
       availableInvite
       viewerUsedInvite
-      canonicalizeRootUrl=true
     />
   | None =>
     switch data.viewer {
