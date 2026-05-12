@@ -1,0 +1,24 @@
+{
+  "name": "@vibespace/schema",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "rescript": "rescript",
+    "clean": "rescript clean"
+  },
+  "dependencies": {
+    "@rescript/runtime": "12.2.0",
+    "@vibespace/generative-ui": "workspace:*",
+    "dataloader": "^2.2.2",
+    "html-validate": "^10.16.0",
+    "lightningcss": "^1.32.0",
+    "pg": "^8.20.0",
+    "pgtyped-rescript": "^2.6.0",
+    "pgtyped-rescript-runtime": "^2.2.0",
+    "resgraph": "^1.1.1"
+  },
+  "devDependencies": {
+    "rescript": "12.2.0"
+  }
+}

@@ -1,0 +1,698 @@
+enum ActivityVisibility {
+  FRIENDS
+}
+
+enum AssistantEditMode {
+  FAST
+  REASONING
+}
+
+enum EditProgressPhase {
+  PREPARING
+  PLANNING
+  CHECKING_WEB_CONTEXT
+  EXTRACTING_ASSETS
+  GENERATING
+  VALIDATING
+  REPAIRING
+  APPLYING
+}
+
+enum FriendConnectionSource {
+  INVITE
+  MANUAL
+}
+
+enum FriendConnectionStatus {
+  ACCEPTED
+  BLOCKED
+}
+
+enum InviteStatus {
+  AVAILABLE
+  REDEEMED
+  REVOKED
+  EXPIRED
+}
+
+enum ProfileEditSessionStatus {
+  DRAFT
+  RUNNING
+  APPLIED
+  FAILED
+  CANCELED
+}
+
+enum ProfileUpdateEventKind {
+  PROFILE_PUBLISHED
+  PROFILE_RESTORED
+}
+
+enum ProfileVersionSource {
+  MANUAL
+  AGENT
+  RESTORE
+  IMPORT
+}
+
+enum ProfileVisibility {
+  FRIENDS
+  DISABLED
+}
+
+enum SelectionSnapshotKind {
+  NONE
+  ELEMENT
+  AREA
+}
+
+enum TrustedCapabilityKind {
+  TRUSTED_IMAGE
+  TRUSTED_FRAME
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ENABLED
+  DISABLED
+}
+
+enum ValidationStatus {
+  VALID
+  INVALID
+}
+
+union AdminCreateInviteResult = 
+  | AdminCreateInviteSucceeded
+  | MutationFailed
+
+
+
+"""Result of creating a seed user from the admin GraphQL mutation."""
+union AdminCreateSeedUserResult = 
+  | AdminCreateSeedUserSucceeded
+  | AdminCreateSeedUserValidationFailed
+  | AdminCreateSeedUserUnavailable
+
+
+union CancelProfileEditSessionResult = 
+  | ProfileEditSessionMutationSucceeded
+  | ProfileEditSessionMutationFailed
+
+
+union DisableProfileResult = 
+  | DisableProfileSucceeded
+  | MutationFailed
+
+
+union DisableUserResult = 
+  | DisableUserSucceeded
+  | MutationFailed
+
+
+union ReactivateUsedInviteResult = 
+  | ReactivateUsedInviteSucceeded
+  | MutationFailed
+
+
+union RedeemInviteResult = 
+  | RedeemInviteSucceeded
+  | MutationFailed
+
+
+union RestoreProfileVersionResult = 
+  | ProfileVersionMutationSucceeded
+  | ProfileVersionMutationFailed
+
+
+union SaveManualProfileVersionResult = 
+  | ProfileVersionMutationSucceeded
+  | ProfileVersionMutationFailed
+
+
+union SubmitAgentEditResult = 
+  | ProfileEditSessionMutationSucceeded
+  | ProfileEditSessionMutationFailed
+
+
+input AdminCreateInviteInput {
+  inviterUserId: ID!
+}
+
+input AdminCreateSeedUserInput {
+  handle: String!
+  displayName: String!
+  role: UserRole
+}
+
+input CancelProfileEditSessionInput {
+  editSessionId: ID!
+}
+
+input DisableProfileInput {
+  profileId: ID!
+  reason: String
+}
+
+input DisableUserInput {
+  userId: ID!
+}
+
+input ReactivateUsedInviteInput {
+  confirmDisable: Boolean!
+}
+
+input RedeemInviteInput {
+  code: String!
+  displayName: String
+}
+
+input RestoreProfileVersionInput {
+  profileId: ID!
+  versionId: ID!
+}
+
+input SaveManualProfileVersionInput {
+  profileId: ID!
+  html: String!
+  css: String!
+  summary: String
+}
+
+input SubmitAgentEditInput {
+  profileId: ID!
+  currentVersionId: ID
+  prompt: String!
+  selectionLabel: String
+  selectionAgentContext: String
+  selectedRegionScreenshotDataUrl: String
+  fullPageScreenshotDataUrl: String
+  referenceImageDataUrl: String
+  previousFailedHtml: String
+  previousFailedCss: String
+  previousFailedSummary: String
+  previousFailedWarnings: String
+  previousFailedValidationMessage: String
+  profileName: String
+  sendtag: String
+  mode: AssistantEditMode
+}
+
+interface Node {
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+
+
+"""An invite was created by an admin action."""
+type AdminCreateInviteSucceeded {
+  invite: Invite!
+}
+
+
+"""The seed user and invite were created."""
+type AdminCreateSeedUserSucceeded {
+  user: User!
+  invite: Invite!
+  sessionToken: String!
+  warnings: [String!]!
+}
+
+
+"""The configured persistence layer could not create the seed user."""
+type AdminCreateSeedUserUnavailable {
+  message: String!
+}
+
+
+"""The seed-user request did not pass validation."""
+type AdminCreateSeedUserValidationFailed {
+  message: String!
+  fields: [String!]!
+}
+
+type AgentConversationSummary implements Node {
+  editSessionId: ID!
+  provider: String!
+  providerConversationId: String
+  model: String
+  prompt: String!
+  selectionLabel: String
+  selectionSnapshotId: ID
+  resultVersionId: ID
+  summary: String!
+  warnings: [String!]!
+  error: String
+  createdAt: String!
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+
+
+"""An admin disabled a profile."""
+type DisableProfileSucceeded {
+  profile: Profile!
+}
+
+
+"""An admin disabled a user."""
+type DisableUserSucceeded {
+  user: User!
+}
+
+type FriendConnection implements Node {
+
+  """User B in this friendship."""
+  userB: User
+
+  """User A in this friendship."""
+  userA: User
+  userAId: ID!
+  userBId: ID!
+  status: FriendConnectionStatus!
+  source: FriendConnectionSource!
+  createdAt: String!
+  updatedAt: String!
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+
+type Invite implements Node {
+
+  """The invitee for this invite, when already redeemed."""
+  invitee: User
+
+  """The inviter for this invite."""
+  inviter: User
+  code: String
+  codeHash: String!
+  inviterUserId: ID!
+  inviteeUserId: ID
+  status: InviteStatus!
+  createdAt: String!
+  redeemedAt: String
+  expiresAt: String
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+
+type InviteChainFriend {
+  id: ID!
+  userId: ID!
+  handle: String!
+  displayName: String!
+  createdAt: String!
+  profileId: ID!
+  profileSlug: String!
+  profileTitle: String!
+  avatarInitials: String!
+  avatarColor: String!
+}
+
+type InviteChainFriendConnection {
+  pageInfo: PageInfo!
+  edges: [InviteChainFriendEdge]
+  totalCount: Int!
+}
+
+type InviteChainFriendEdge {
+  cursor: String!
+  node: InviteChainFriend
+}
+
+type Mutation {
+
+  """Disable-profile admin stub, only available in local fixture mode."""
+  disableProfile(input: DisableProfileInput!): DisableProfileResult!
+
+  """Disable-user admin stub, only available in local fixture mode."""
+  disableUser(input: DisableUserInput!): DisableUserResult!
+
+  """Reactivate the invite code the current viewer used by disabling the viewer account."""
+  reactivateUsedInvite(input: ReactivateUsedInviteInput!): ReactivateUsedInviteResult!
+
+  """Cancel an edit session and persist the canceled state when DATABASE_URL is configured."""
+  cancelProfileEditSession(input: CancelProfileEditSessionInput!): CancelProfileEditSessionResult!
+
+  """Agent edit submission backed by the server-side OpenAI provider."""
+  submitAgentEdit(input: SubmitAgentEditInput!): SubmitAgentEditResult!
+
+  """Restore profile version backed by pgtyped-rescript when DATABASE_URL is configured."""
+  restoreProfileVersion(input: RestoreProfileVersionInput!): RestoreProfileVersionResult!
+
+  """Manual profile save backed by pgtyped-rescript when DATABASE_URL is configured."""
+  saveManualProfileVersion(input: SaveManualProfileVersionInput!): SaveManualProfileVersionResult!
+
+  """Invite redemption. This atomically creates the user, profile, invite grant, and invite friendship."""
+  redeemInvite(input: RedeemInviteInput!): RedeemInviteResult!
+
+  """Dev-key admin invite creation. Uses pgtyped-rescript when DATABASE_URL is configured."""
+  adminCreateInvite(input: AdminCreateInviteInput!): AdminCreateInviteResult!
+
+  """Dev-key admin seed user. Uses pgtyped-rescript when DATABASE_URL is configured."""
+  adminCreateSeedUser(input: AdminCreateSeedUserInput!): AdminCreateSeedUserResult!
+}
+
+
+"""A mutation failed for an expected domain reason."""
+type MutationFailed {
+  message: String!
+}
+
+
+"""Information about pagination in a connection."""
+type PageInfo {
+
+  """When paginating forwards, are there more items?"""
+  hasNextPage: Boolean!
+
+  """When paginating backwards, are there more items?"""
+  hasPreviousPage: Boolean!
+
+  """When paginating backwards, the cursor to continue."""
+  startCursor: String
+
+  """When paginating forwards, the cursor to continue."""
+  endCursor: String
+}
+
+type Profile implements Node {
+
+  """Required Myspace-style friends list for the profile's invite-chain community."""
+  inviteChainFriends(first: Int, after: String, before: String, last: Int): InviteChainFriendConnection!
+
+  """Prompt/edit history for this profile."""
+  editSessions(first: Int, after: String, before: String, last: Int): ProfileEditSessionConnection!
+
+  """Version history for this profile."""
+  versionHistory(first: Int, after: String, before: String, last: Int): ProfileVersionConnection!
+
+  """The profile's current published version."""
+  currentVersion: ProfileVersion
+
+  """The current Send avatar URL for this profile's optional Sendtag."""
+  sendAvatarUrl: String
+
+  """The profile owner."""
+  owner: User
+  ownerUserId: ID!
+  slug: String!
+  title: String!
+  sendtag: String
+  visibility: ProfileVisibility!
+  currentVersionId: ID
+  createdAt: String!
+  updatedAt: String!
+  publishedAt: String
+  disabledAt: String
+  disabledReason: String
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+
+type ProfileEditSession implements Node {
+
+  """The applied result version for this edit session."""
+  resultVersion: ProfileVersion
+
+  """The selected context for this edit session."""
+  selectionSnapshot: SelectionSnapshot
+
+  """Lightweight provider conversation summary for this edit session."""
+  conversationSummary: AgentConversationSummary
+  profileId: ID!
+  userId: ID!
+  providerConversationId: String
+  status: ProfileEditSessionStatus!
+  progressPhase: EditProgressPhase!
+  prompt: String!
+  selectionSnapshotId: ID
+  resultVersionId: ID
+  summary: String!
+  warnings: [String!]!
+  error: String
+  createdAt: String!
+  updatedAt: String!
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+
+type ProfileEditSessionConnection {
+  pageInfo: PageInfo!
+  edges: [ProfileEditSessionEdge]
+  totalCount: Int!
+}
+
+type ProfileEditSessionEdge {
+  cursor: String!
+  node: ProfileEditSession
+}
+
+
+"""An edit-session mutation failed for an expected domain reason."""
+type ProfileEditSessionMutationFailed {
+  editSession: ProfileEditSession
+  providerConversationId: String
+  resultVersionId: ID
+  summary: String!
+  warnings: [String!]!
+  validationErrors: [String!]!
+  message: String!
+}
+
+
+"""An edit-session mutation completed with a persisted session."""
+type ProfileEditSessionMutationSucceeded {
+  editSession: ProfileEditSession!
+  providerConversationId: String
+  resultVersionId: ID
+  summary: String!
+  warnings: [String!]!
+  validationErrors: [String!]!
+}
+
+type ProfileUpdateEvent implements Node {
+
+  """The version published by this activity event."""
+  eventProfileVersion: ProfileVersion
+
+  """The profile for this activity event."""
+  eventProfile: Profile
+
+  """The actor that created this activity event."""
+  actor: User
+  actorUserId: ID!
+  profileId: ID!
+  profileVersionId: ID!
+  kind: ProfileUpdateEventKind!
+  title: String!
+  summary: String!
+  visibility: ActivityVisibility!
+  createdAt: String!
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+
+type ProfileUpdateEventConnection {
+  pageInfo: PageInfo!
+  edges: [ProfileUpdateEventEdge]
+  totalCount: Int!
+}
+
+type ProfileUpdateEventEdge {
+  cursor: String!
+  node: ProfileUpdateEvent
+}
+
+type ProfileVersion implements Node {
+
+  """Approved trusted capabilities extracted for this version."""
+  trustedCapabilities: [TrustedCapabilityReference!]!
+
+  """The user that created this version."""
+  createdBy: User
+
+  """The profile attached to this version."""
+  profileForVersion: Profile
+  profileId: ID!
+  revisionNumber: Int!
+  parentVersionId: ID
+  html: String!
+  css: String!
+  source: ProfileVersionSource!
+  promptSessionId: ID
+  summary: String!
+  validationStatus: ValidationStatus!
+  validationErrors: [String!]!
+  createdByUserId: ID!
+  createdAt: String!
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+
+type ProfileVersionConnection {
+  pageInfo: PageInfo!
+  edges: [ProfileVersionEdge]
+  totalCount: Int!
+}
+
+type ProfileVersionEdge {
+  cursor: String!
+  node: ProfileVersion
+}
+
+
+"""A profile version mutation failed before publishing a version."""
+type ProfileVersionMutationFailed {
+  profile: Profile
+  summary: String!
+  validationErrors: [String!]!
+  message: String!
+}
+
+
+"""A profile version mutation persisted a new version."""
+type ProfileVersionMutationSucceeded {
+  profile: Profile
+  profileVersion: ProfileVersion!
+  activityEvent: ProfileUpdateEvent
+  summary: String!
+  warnings: [String!]!
+}
+
+type Query {
+
+  """The redeemed invite the current viewer used to join, if any."""
+  viewerUsedInvite: Invite
+
+  """The current viewer's available invite grant, if any."""
+  availableInvite: Invite
+
+  """Recent profile update events for accepted friends."""
+  friendActivity(first: Int, after: String, before: String, last: Int): ProfileUpdateEventConnection!
+
+  """Prompt/edit history for a profile."""
+  profileEditSessions(profileId: ID!, first: Int, after: String, before: String, last: Int): ProfileEditSessionConnection!
+
+  """Version history for a profile."""
+  profileVersions(profileId: ID!, first: Int, after: String, before: String, last: Int): ProfileVersionConnection!
+
+  """Profile edit session resolver backed by pgtyped-rescript when DATABASE_URL is configured."""
+  profileEditSessionById(id: ID!): ProfileEditSession
+
+  """Profile version resolver backed by pgtyped-rescript when DATABASE_URL is configured."""
+  profileVersionById(id: ID!): ProfileVersion
+
+  """Invite lookup for the invite-link onboarding route."""
+  inviteByCode(code: String!): Invite
+
+  """Friend-visible profile by handle."""
+  profileByHandle(handle: String!): Profile
+
+  """The current viewer's canonical profile."""
+  viewerProfile: Profile
+
+  """The current viewer account."""
+  viewer: User
+
+  """Backend readiness timestamp."""
+  currentTime: Float!
+
+  """Relay batched global-object lookup over the DB-backed slice with fixture fallback."""
+  nodes(ids: [ID!]!): [Node]!
+
+  """Relay global-object lookup over the DB-backed slice with fixture fallback."""
+  node(id: ID!): Node
+
+  """Current signed-in user id as a Relay global id."""
+  currentUserId: ID!
+}
+
+
+"""A used invite was made available again."""
+type ReactivateUsedInviteSucceeded {
+  invite: Invite!
+  user: User!
+}
+
+
+"""A new user profile was created from an invite."""
+type RedeemInviteSucceeded {
+  invite: Invite!
+  user: User!
+  friendConnection: FriendConnection!
+  profile: Profile!
+  sessionToken: String
+}
+
+type SelectedElementMetadata {
+  vibespaceId: String!
+  friendlyName: String!
+  friendlyDescription: String!
+  tagName: String!
+  text: String!
+  className: String!
+  selector: String!
+  boundsJson: String!
+}
+
+type SelectionSnapshot implements Node {
+  profileId: ID!
+  requestId: String!
+  kind: SelectionSnapshotKind!
+  label: String!
+  description: String!
+  agentContext: String!
+  boundsJson: String!
+  viewportJson: String!
+  nearestElement: SelectedElementMetadata
+  selectedElements: [SelectedElementMetadata!]!
+  createdAt: String!
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+
+type TrustedCapabilityReference implements Node {
+  profileVersionId: ID!
+  kind: TrustedCapabilityKind!
+  origin: String!
+  source: String!
+  canonicalUrl: String!
+  metadataJson: String!
+  validationStatus: ValidationStatus!
+  createdAt: String!
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+
+type User implements Node {
+
+  """The canonical profile owned by this user."""
+  profile: Profile
+  handle: String!
+  displayName: String!
+  status: UserStatus!
+  role: UserRole!
+  invitedByUserId: ID
+  createdAt: String!
+  activatedAt: String
+  updatedAt: String!
+
+  """Relay global id for every type implementing Node."""
+  id: ID!
+}
+

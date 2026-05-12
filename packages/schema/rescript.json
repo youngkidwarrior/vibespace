@@ -1,0 +1,29 @@
+{
+  "name": "@vibespace/schema",
+  "sources": [
+    {
+      "dir": "src",
+      "subdirs": true
+    },
+    {
+      "dir": "../../db/queries",
+      "subdirs": true
+    }
+  ],
+  "dependencies": ["resgraph", "pgtyped-rescript"],
+  "package-specs": {
+    "module": "esmodule",
+    "in-source": true
+  },
+  "suffix": ".res.js",
+  "reanalyze": {
+    "analysis": ["dce"],
+    "suppress": [
+      "src/__generated__",
+      "../../db/queries/__generated__",
+      "db/queries/__generated__"
+    ],
+    "unsuppress": [],
+    "transitive": false
+  }
+}
