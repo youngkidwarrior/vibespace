@@ -3,7 +3,7 @@
 /* eslint-disable */
 /* tslint:disable */
 
-import * as DocumentEditPromptJS from './DocumentEditPrompt.res.js';
+import * as DocumentEditPromptJS from './DocumentEditPrompt.bs.js';
 
 import type {webContext as WebContext_webContext} from './WebContext.gen';
 

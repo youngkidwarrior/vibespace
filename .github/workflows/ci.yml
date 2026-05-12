@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Compile, Codegen, And Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: vibespace
+          POSTGRES_USER: vibespace
+          POSTGRES_PASSWORD: vibespace
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vibespace -d vibespace"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: vibespace
+      PGUSER: vibespace
+      PGPASSWORD: vibespace
+      POSTGRES_PASSWORD: vibespace
+      YARN_ENABLE_GLOBAL_CACHE: "false"
+      YARN_ENABLE_MIRROR: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@4.3.1 --activate
+
+      - name: Install Postgres Client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Generate Database Bindings
+        run: |
+          yarn db:schema:bootstrap
+          yarn db:schema:plan
+          yarn db:schema:apply
+          yarn pgtyped
+
+      - name: Generate Workspace Artifacts
+        run: |
+          yarn workspace @vibespace/generative-ui rescript
+          yarn resgraph
+          yarn relay
+          yarn router
+
+      - name: Verify Generated Artifacts Are Fresh
+        run: |
+          set -euo pipefail
+
+          paths=(
+            "db/queries/__generated__"
+            "packages/schema/src/__generated__"
+            "apps/web/src/__generated__/relay"
+            "apps/web/src/routes"
+          )
+
+          mapfile -t tracked_gentype_files < <(git ls-files "packages/generative-ui/src/*.gen.tsx")
+          mapfile -t generated_gentype_files < <(find packages/generative-ui/src -maxdepth 1 -name "*.gen.tsx" -print | sort)
+          paths+=("${tracked_gentype_files[@]}" "${generated_gentype_files[@]}")
+
+          if [ "$(git status --porcelain -- "${paths[@]}")" != "" ]; then
+            echo "Generated artifacts are stale. Run the relevant codegen command and commit the result."
+            echo ""
+            git status --short -- "${paths[@]}"
+            echo ""
+            git diff -- "${paths[@]}"
+            exit 1
+          fi
+
+      - name: Compile And Analyze
+        run: |
+          yarn workspace @vibespace/schema rescript
+          yarn rescript:backend
+          yarn rescript
+          yarn reanalyze:report
+
+      - name: Build Frontend
+        run: yarn build

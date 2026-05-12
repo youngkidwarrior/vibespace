@@ -14,11 +14,6 @@
   "dependencies": [
     "@rescript/webapi"
   ],
-  "package-specs": {
-    "module": "esmodule",
-    "in-source": true
-  },
-  "suffix": ".res.js",
   "reanalyze": {
     "analysis": ["dce"],
     "suppress": [],

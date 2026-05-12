@@ -3,7 +3,7 @@
 /* eslint-disable */
 /* tslint:disable */
 
-import * as GenerativeUiJS from './GenerativeUi.res.js';
+import * as GenerativeUiJS from './GenerativeUi.bs.js';
 
 import type {profileEditPromptInput as DocumentEditPrompt_profileEditPromptInput} from './DocumentEditPrompt.gen';
 
