@@ -1,5 +1,6 @@
 node_modules
 .DS_Store
+.direnv
 dist
 lib
 *.bs.js
@@ -12,8 +13,36 @@ lib
 .corepack
 .npm-cache
 .vite
+.localnet.env
+.gen-env.lock
+.k8s/
+.ctlptl/
 .yarn/cache
 .yarn/unplugged
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+*.llm.txt
+docs/reference/
+
+# ReScript mirrors external package sources here when packages/schema imports root db query modules.
+packages/schema/db/
+
+# Local pgschema review artifacts. Keep db/plans/README.md trackable.
+db/plans/*.plan.*
+!db/plans/README.md
+
+# Local env files. Keep .envrc and .env.example trackable.
+.env.*
+.envrc.private
+!.env.example
+
+# Common generated test/cache output.
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+*.log
+tmp/
+temp/
+.cache/

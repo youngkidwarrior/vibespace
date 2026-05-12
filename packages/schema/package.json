@@ -10,7 +10,6 @@
   "dependencies": {
     "@rescript/runtime": "12.2.0",
     "@vibespace/generative-ui": "workspace:*",
-    "dataloader": "^2.2.2",
     "html-validate": "^10.16.0",
     "lightningcss": "^1.32.0",
     "pg": "^8.20.0",
