@@ -457,6 +457,18 @@ let markSubmitting = (drafts: array<item>, id: PromptDraftId.t, now: IsoTimestam
       : draft
   )
 
+let markSubmittingPhase = (
+  drafts: array<item>,
+  id: PromptDraftId.t,
+  phase: progressPhase,
+  now: IsoTimestamp.t,
+): array<item> =>
+  drafts->Array.map(draft =>
+    draft.id->PromptDraftId.equals(id)
+      ? {...draft, status: Submitting(phase), notice: DraftNotice.empty, minimized: false, updatedAt: now}
+      : draft
+  )
+
 let markError = (
   drafts: array<item>,
   id: PromptDraftId.t,
