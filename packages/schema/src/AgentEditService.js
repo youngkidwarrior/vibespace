@@ -2,6 +2,7 @@ import { Client } from "pg";
 import {
   composeProfileEditPrompt,
   emptyWebContext,
+  sanitizeWebContext,
 } from "@vibespace/generative-ui";
 import { validateProfileDocument } from "./ProfileHtmlValidation.js";
 import { normalizeSendtag } from "./SendProfileLookup.js";
@@ -24,7 +25,8 @@ const profileDocumentPatchFormat = {
       },
       css: {
         type: "string",
-        description: "Complete replacement CSS for the profile page. Plain CSS only.",
+        description:
+          "Complete replacement CSS for the profile page. Plain valid CSS only. Use /* ... */ comments, never slash-only comments, and never end a selector with a combinator.",
       },
       summary: {
         type: "string",
@@ -73,6 +75,70 @@ function stripSourceFence(text) {
   const trimmed = String(text || "").trim();
   const match = trimmed.match(/^```(?:html|css)?\s*([\s\S]*?)\s*```$/i);
   return match ? match[1].trim() : trimmed;
+}
+
+function repairDanglingChildCombinators(css) {
+  const source = String(css || "");
+  let output = "";
+  let cursor = 0;
+
+  for (let index = 0; index < source.length; index += 1) {
+    if (source[index] !== ">") continue;
+
+    let nextIndex = index + 1;
+    while (nextIndex < source.length && /\s/.test(source[nextIndex])) {
+      nextIndex += 1;
+    }
+
+    if (source[nextIndex] !== "{") continue;
+
+    const ruleStart = Math.max(
+      source.lastIndexOf("{", index),
+      source.lastIndexOf("}", index),
+      source.lastIndexOf(";", index),
+    );
+    const selectorPrefix = source.slice(ruleStart + 1, index).trim();
+    if (!selectorPrefix || selectorPrefix.startsWith("@")) continue;
+
+    output += source.slice(cursor, index) + "> * ";
+    cursor = nextIndex;
+    index = nextIndex - 1;
+  }
+
+  return output + source.slice(cursor);
+}
+
+function replaceGeneratedSlashComments(source, pattern) {
+  return source.replace(pattern, (match, prefix, body) => {
+    if (!/[A-Za-z]/.test(body)) return match;
+    return `${prefix}/*${body.trim()}*/`;
+  });
+}
+
+function decodeGeneratedCssEntities(css) {
+  return String(css || "")
+    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+export function repairGeneratedCss(css) {
+  let source = decodeGeneratedCssEntities(css);
+
+  source = replaceGeneratedSlashComments(
+    source,
+    /(^|[}\s;])\/(?![*/])([^{}\n]*?)\*\//g,
+  );
+  source = replaceGeneratedSlashComments(
+    source,
+    /(^|[}\s;])\/(?![*/])([^{}\n]*?[A-Za-z][^{}\n]*?)\/(?=\s*(?:[.#[:@]|\*|[A-Za-z_-]|$))/g,
+  );
+  source = repairDanglingChildCombinators(source);
+
+  return source;
 }
 
 function parseProfileDocumentJsonPatch(text) {
@@ -153,6 +219,202 @@ function imageParts(label, dataUrl) {
   ];
 }
 
+function hasMediaIntent(text) {
+  return /\b(oembed|embed|playable|player|play|youtube|spotify|soundcloud|video|song|music|audio|track)\b/i.test(
+    String(text || ""),
+  );
+}
+
+function trimUrlToken(value) {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/[)\].,;!?]+$/g, "")
+    .trim();
+}
+
+function extractPromptHttpsUrls(text) {
+  const matches = String(text || "").match(/https:\/\/[^\s<>"']+/gi) || [];
+  return Array.from(new Set(matches.map(trimUrlToken).filter(Boolean))).slice(0, 8);
+}
+
+function safeUrl(value, base) {
+  try {
+    const url = new URL(value, base);
+    if (url.protocol !== "https:") return undefined;
+    return url;
+  } catch {
+    return undefined;
+  }
+}
+
+function youtubeVideoIdFromUrl(url) {
+  const host = url.hostname.toLowerCase();
+  const pathParts = url.pathname.split("/").filter(Boolean);
+
+  if (host === "youtu.be") {
+    return pathParts[0] || "";
+  }
+
+  if (host === "www.youtube.com" || host === "youtube.com" || host === "m.youtube.com") {
+    if (url.pathname === "/watch") {
+      return url.searchParams.get("v") || "";
+    }
+
+    if (["embed", "shorts", "live"].includes(pathParts[0])) {
+      return pathParts[1] || "";
+    }
+  }
+
+  if (host === "www.youtube-nocookie.com" && pathParts[0] === "embed") {
+    return pathParts[1] || "";
+  }
+
+  return "";
+}
+
+function youtubeStartSeconds(url) {
+  const raw = url.searchParams.get("start") || url.searchParams.get("t") || "";
+  if (/^\d+$/.test(raw)) return raw;
+
+  const match = raw.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/i);
+  if (!match) return "";
+
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  const seconds = Number(match[3] || 0);
+  const total = hours * 3600 + minutes * 60 + seconds;
+  return total > 0 ? String(total) : "";
+}
+
+function youtubeFrameFromUrl(rawUrl, metadata = {}) {
+  const url = safeUrl(rawUrl);
+  if (!url) return undefined;
+
+  const videoId = youtubeVideoIdFromUrl(url);
+  if (!/^[A-Za-z0-9_-]{6,32}$/.test(videoId)) return undefined;
+
+  const frameUrl = new URL(`https://www.youtube.com/embed/${videoId}`);
+  const start = youtubeStartSeconds(url);
+  if (start) {
+    frameUrl.searchParams.set("start", start);
+  }
+
+  const canonicalUrl =
+    typeof metadata.canonicalUrl === "string" && metadata.canonicalUrl.trim() !== ""
+      ? metadata.canonicalUrl.trim()
+      : rawUrl;
+
+  return {
+    origin: "https://www.youtube.com",
+    title: String(metadata.title || "YouTube video"),
+    canonicalUrl,
+    frameUrl: frameUrl.toString(),
+    frameKind: "youtube_video",
+    autoplaySupported: false,
+  };
+}
+
+function iframeSourceFromHtml(html) {
+  const match = String(html || "").match(/<iframe\b[^>]*\ssrc=["']([^"']+)["'][^>]*>/i);
+  return match ? match[1].replace(/&amp;/g, "&") : "";
+}
+
+async function fetchYoutubeOEmbedFrame(rawUrl, fetchImpl) {
+  if (typeof fetchImpl !== "function") return undefined;
+
+  const endpoint = new URL("https://www.youtube.com/oembed");
+  endpoint.searchParams.set("url", rawUrl);
+  endpoint.searchParams.set("format", "json");
+
+  const controller = typeof AbortController === "function" ? new AbortController() : undefined;
+  const timeout = controller ? setTimeout(() => controller.abort(), 2500) : undefined;
+  try {
+    const response = await fetchImpl(endpoint.toString(), {
+      signal: controller?.signal,
+      headers: { accept: "application/json" },
+    });
+    if (!response?.ok) return undefined;
+
+    const payload = await response.json().catch(() => null);
+    const iframeSource = iframeSourceFromHtml(payload?.html);
+    const frame = iframeSource
+      ? youtubeFrameFromUrl(iframeSource, {
+          canonicalUrl: rawUrl,
+          title: payload?.title || "YouTube video",
+        })
+      : undefined;
+
+    return frame || youtubeFrameFromUrl(rawUrl, { title: payload?.title || "YouTube video" });
+  } catch {
+    return undefined;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+async function trustedFrameForPromptUrl(rawUrl, fetchImpl) {
+  const url = safeUrl(rawUrl);
+  if (!url) return undefined;
+
+  const host = url.hostname.toLowerCase();
+  if (
+    host === "youtu.be" ||
+    host === "youtube.com" ||
+    host === "www.youtube.com" ||
+    host === "m.youtube.com" ||
+    host === "www.youtube-nocookie.com"
+  ) {
+    return (await fetchYoutubeOEmbedFrame(rawUrl, fetchImpl)) || youtubeFrameFromUrl(rawUrl);
+  }
+
+  return undefined;
+}
+
+export async function resolveWebContextForPrompt(prompt, options = {}) {
+  const urls = extractPromptHttpsUrls(prompt);
+  const mediaIntent = hasMediaIntent(prompt);
+  if (urls.length === 0) {
+    return emptyWebContext(null, null);
+  }
+
+  const fetchImpl = Object.prototype.hasOwnProperty.call(options, "fetchImpl")
+    ? options.fetchImpl
+    : globalThis.fetch;
+  const safeFrames = [];
+  for (const url of urls) {
+    const frame = await trustedFrameForPromptUrl(url, fetchImpl);
+    if (frame) safeFrames.push(frame);
+  }
+
+  if (safeFrames.length === 0) {
+    return sanitizeWebContext({
+      status: mediaIntent ? "not_found" : "not_needed",
+      intentKind: mediaIntent ? "media" : "reference",
+      warnings: mediaIntent
+        ? ["Media lookup did not produce a trusted-origin frame URL."]
+        : [],
+    });
+  }
+
+  return sanitizeWebContext({
+    status: "resolved",
+    intentKind: "media",
+    summary: "Resolved a trusted media frame from the user's prompt URL.",
+    safeFrames,
+    resolvedItems: safeFrames.map((frame) => ({
+      title: frame.title,
+      description: "Trusted playable media frame resolved for this profile request.",
+      canonicalUrl: frame.canonicalUrl,
+      provider: frame.origin,
+      itemType: "media",
+    })),
+    citations: safeFrames.map((frame) => ({
+      title: frame.title,
+      url: frame.canonicalUrl,
+    })),
+  });
+}
+
 async function requestProfilePatch({ apiKey, prompt, model, reasoningEffort, input }) {
   const content = [
     { type: "input_text", text: prompt },
@@ -206,7 +468,20 @@ function trustedSourcesFromHtml(html, kind) {
     .filter(Boolean);
 }
 
-async function validateProfilePatch(patch, { currentHtml }) {
+function trustedSourcesFromWebContext(webContext, kind) {
+  const items = kind === "frame" ? webContext?.safeFrames : webContext?.safeImages;
+  const field = kind === "frame" ? "frameUrl" : "imageUrl";
+  return Array.isArray(items)
+    ? items.map((item) => String(item?.[field] || "").trim()).filter(Boolean)
+    : [];
+}
+
+function withGeneratedCssRepairs(patch) {
+  const css = repairGeneratedCss(patch?.css || "");
+  return css === patch?.css ? patch : { ...patch, css };
+}
+
+async function validateProfilePatch(patch, { currentHtml, webContext }) {
   const html = String(patch?.html || "");
   const css = String(patch?.css || "");
 
@@ -216,12 +491,18 @@ async function validateProfilePatch(patch, { currentHtml }) {
   }
 
   const existingFrames = new Set(trustedSourcesFromHtml(currentHtml, "frame"));
+  for (const source of trustedSourcesFromWebContext(webContext, "frame")) {
+    existingFrames.add(source);
+  }
   const generatedFrames = trustedSourcesFromHtml(html, "frame");
   if (generatedFrames.some((source) => !existingFrames.has(source))) {
     return "Profile content used a media embed that was not already trusted by this profile.";
   }
 
   const existingImages = new Set(trustedSourcesFromHtml(currentHtml, "image"));
+  for (const source of trustedSourcesFromWebContext(webContext, "image")) {
+    existingImages.add(source);
+  }
   const generatedImages = trustedSourcesFromHtml(html, "image");
   if (generatedImages.some((source) => !existingImages.has(source))) {
     return "Profile content used an image that was not already trusted by this profile.";
@@ -612,7 +893,7 @@ async function persistAppliedPatch(databaseUrl, input, state, patch, providerCon
   });
 }
 
-function composePrompt(input, currentVersion) {
+function composePrompt(input, currentVersion, webContext) {
   return composeProfileEditPrompt({
     instruction: input.prompt || "",
     documentHtml: currentVersion.html || "",
@@ -625,7 +906,31 @@ function composePrompt(input, currentVersion) {
     previousFailedSummary: failedPatchText(input.previousFailedSummary, 1200),
     previousFailedWarnings: failedPatchText(input.previousFailedWarnings, 2000),
     previousFailedValidationMessage: failedPatchText(input.previousFailedValidationMessage, 2000),
-    webContext: emptyWebContext(null, null),
+    webContext,
+  });
+}
+
+function composeRepairPrompt(input, currentVersion, webContext, failedPatch, validationMessage) {
+  const instruction = [
+    "Repair the previous generated profile patch so it passes Vibespace validation.",
+    `Validation error: ${validationMessage}`,
+    `Original user request: ${input.prompt || ""}`,
+    "Return a complete replacement JSON patch. Preserve the requested design intent, but fix invalid HTML, invalid CSS syntax, and unsupported web capability placeholders. CSS comments must use /* ... */ and selectors must be complete.",
+  ].join("\n");
+
+  return composeProfileEditPrompt({
+    instruction,
+    documentHtml: currentVersion.html || "",
+    documentCss: currentVersion.css || "",
+    selectedContext: input.selectionAgentContext || input.selectionLabel || "",
+    selectedRegionScreenshotDataUrl: input.selectedRegionScreenshotDataUrl || "",
+    fullPageScreenshotDataUrl: input.fullPageScreenshotDataUrl || "",
+    previousFailedHtml: failedPatchText(failedPatch?.html, maxFailedPatchSnapshotLength),
+    previousFailedCss: failedPatchText(failedPatch?.css, maxFailedPatchSnapshotLength),
+    previousFailedSummary: failedPatchText(failedPatch?.summary, 1200),
+    previousFailedWarnings: failedPatchText(failedPatch?.warnings, 2000),
+    previousFailedValidationMessage: failedPatchText(validationMessage, 2000),
+    webContext,
   });
 }
 
@@ -676,32 +981,62 @@ async function runAgentEdit(input, state) {
   let providerConversationId;
 
   try {
+    await updateSessionProgress(databaseUrl, state.session.id, "checking_web_context");
+    const webContext = await resolveWebContextForPrompt(prompt);
+    await updateSessionProgress(databaseUrl, state.session.id, "generating");
+
     const providerResult = await requestProfilePatch({
       apiKey,
-      prompt: composePrompt({ ...input, prompt }, state.currentVersion),
+      prompt: composePrompt({ ...input, prompt }, state.currentVersion, webContext),
       model,
       reasoningEffort,
       input,
     });
     providerConversationId = providerResult.providerConversationId;
     await updateSessionProgress(databaseUrl, state.session.id, "validating");
-    const validationMessage = await validateProfilePatch(providerResult.patch, {
+    let patch = withGeneratedCssRepairs(providerResult.patch);
+    let validationMessage = await validateProfilePatch(patch, {
       currentHtml: state.currentVersion.html,
+      webContext,
     });
     if (validationMessage) {
-      const session = await updateSessionFailure(databaseUrl, state.session.id, {
-        summary: "Assistant output failed validation.",
-        warnings: warningArray(providerResult.patch.warnings),
-        error: validationMessage,
-        progressPhase: "validating",
+      await updateSessionProgress(databaseUrl, state.session.id, "repairing");
+      const repairResult = await requestProfilePatch({
+        apiKey,
+        prompt: composeRepairPrompt(
+          { ...input, prompt },
+          state.currentVersion,
+          webContext,
+          providerResult.patch,
+          validationMessage,
+        ),
+        model,
+        reasoningEffort,
+        input,
       });
-      return serverFailure(validationMessage, {
-        summary: "Assistant output failed validation.",
-        warnings: warningArray(providerResult.patch.warnings),
-        validationErrors: [validationMessage],
-        session,
-        providerConversationId,
+      providerConversationId = repairResult.providerConversationId || providerConversationId;
+      await updateSessionProgress(databaseUrl, state.session.id, "validating");
+      patch = withGeneratedCssRepairs(repairResult.patch);
+      validationMessage = await validateProfilePatch(patch, {
+        currentHtml: state.currentVersion.html,
+        webContext,
       });
+
+      if (validationMessage) {
+        const session = await updateSessionFailure(databaseUrl, state.session.id, {
+          summary: "Assistant output failed validation.",
+          warnings: warningArray(patch.warnings),
+          error: validationMessage,
+          progressPhase: "validating",
+        });
+        return serverFailure(validationMessage, {
+          summary: "Assistant output failed validation.",
+          warnings: warningArray(patch.warnings),
+          validationErrors: [validationMessage],
+          session,
+          providerConversationId,
+        });
+      }
     }
 
     await updateSessionProgress(databaseUrl, state.session.id, "applying");
@@ -709,14 +1044,14 @@ async function runAgentEdit(input, state) {
       databaseUrl,
       { ...input, prompt },
       state,
-      providerResult.patch,
+      patch,
       providerConversationId,
       model,
     );
 
     return {
       ok: true,
-      summary: providerResult.patch.summary,
+      summary: patch.summary,
       warnings: persisted.warnings,
       validationErrors: [],
       error: undefined,
