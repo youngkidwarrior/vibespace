@@ -24,6 +24,12 @@ describe("ProfileHtmlValidation", () => {
     await expect(validateProfileDocument(validHtml, validCss)).resolves.toBe("");
   });
 
+  it("accepts harmless trailing whitespace in profile HTML", async () => {
+    const htmlWithTrailingWhitespace = validHtml.replace("</p>", "</p>   ");
+
+    await expect(validateHtmlSource(htmlWithTrailingWhitespace)).resolves.toBe("");
+  });
+
   it("rejects full HTML documents instead of profile fragments", async () => {
     await expect(validateHtmlSource(`<html><body>${validHtml}</body></html>`)).resolves.toContain(
       "must be a body fragment",
