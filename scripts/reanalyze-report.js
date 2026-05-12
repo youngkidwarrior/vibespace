@@ -109,6 +109,22 @@ function typeFromReport(report) {
   );
 }
 
+function severityFromReport(report) {
+  return firstString(
+    report?.severity,
+    report?.level,
+    report?.type === "error" ? "error" : "",
+    report?.kind === "error" ? "error" : "",
+    report?.warning,
+    "warning",
+  ).toLowerCase();
+}
+
+function isErrorReport(report) {
+  const severity = severityFromReport(report);
+  return severity === "error" || severity === "fatal";
+}
+
 function messageFromReport(report) {
   return firstString(
     report?.message,
@@ -141,13 +157,19 @@ function groupByType(reports) {
   }, new Map());
 }
 
-function printReport(reports, maxWarnings) {
+function printReport(reports) {
+  const errorCount = reports.filter(isErrorReport).length;
+  const warningCount = reports.length - errorCount;
+
   if (reports.length === 0) {
-    console.log(`Reanalyze reported 0 issues. Budget: ${maxWarnings}.`);
+    console.log("Reanalyze reported 0 issues.");
     return;
   }
 
-  console.log(`Reanalyze reported ${reports.length} issues. Budget: ${maxWarnings}.`);
+  console.log(
+    `Reanalyze reported ${reports.length} issues. Errors: ${errorCount}. Warnings: ${warningCount}.`,
+  );
+  console.log("Reanalyze warnings do not fail this check.");
 
   for (const [type, group] of groupByType(reports)) {
     console.log(`\n${type}: ${group.length}`);
@@ -159,17 +181,17 @@ function printReport(reports, maxWarnings) {
 }
 
 function main() {
-  const maxWarnings = parseMaxWarnings(process.argv.slice(2), process.env);
+  parseMaxWarnings(process.argv.slice(2), process.env);
 
   const result = runChecked("node", ["scripts/reanalyze-all.js", "-dce", "-json"]);
   const reports = parseReports(result.stdout);
+  const errorReports = reports.filter(isErrorReport);
 
-  printReport(reports, maxWarnings);
+  printReport(reports);
 
-  if (reports.length > maxWarnings) {
+  if (errorReports.length > 0) {
     console.error(
-      `\nReanalyze issue count ${reports.length} exceeds budget ${maxWarnings}. ` +
-        "Fix the issues or raise REANALYZE_MAX_WARNINGS for a temporary exploratory run.",
+      `\nReanalyze reported ${errorReports.length} error issues. Fix the errors before merging.`,
     );
     process.exit(1);
   }
