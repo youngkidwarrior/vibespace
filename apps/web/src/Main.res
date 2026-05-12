@@ -12,13 +12,15 @@ switch Document.getElementById(DomGlobal.document, "root")->Null.toOption {
     <React.StrictMode>
       <RescriptRelayReact.Context.Provider environment=RelayEnv.environment>
         <RelayRouter.Provider value={Router.routerContext}>
-          <React.Suspense fallback={<div className="grid min-h-screen place-items-center bg-white p-6 text-neutral-950"> {React.string("Loading profile...")} </div>}>
-            <RelayRouter.RouteRenderer renderPending={pending =>
-              pending
-                ? <div className="fixed inset-0 z-20 grid place-items-center bg-white/70 p-6 text-neutral-950 backdrop-blur-md"> {React.string("Loading...")} </div>
-                : React.null
-            } />
-          </React.Suspense>
+          <AgentEditTracker.Provider>
+            <React.Suspense fallback={<div className="grid min-h-screen place-items-center bg-white p-6 text-neutral-950"> {React.string("Loading profile...")} </div>}>
+              <RelayRouter.RouteRenderer renderPending={pending =>
+                pending
+                  ? <div className="fixed inset-0 z-20 grid place-items-center bg-white/70 p-6 text-neutral-950 backdrop-blur-md"> {React.string("Loading...")} </div>
+                  : React.null
+              } />
+            </React.Suspense>
+          </AgentEditTracker.Provider>
         </RelayRouter.Provider>
       </RescriptRelayReact.Context.Provider>
     </React.StrictMode>,
