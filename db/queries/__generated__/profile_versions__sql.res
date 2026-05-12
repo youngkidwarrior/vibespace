@@ -60,7 +60,7 @@ module GetUserById: {
   /** Returns exactly 1 result. Returns `None` if more or less than exactly 1 result is returned. */
   @gentype
   let one: (PgTyped.Pg.Client.t, getUserByIdParams) => promise<option<getUserByIdResult>>
-
+  
   /** Returns exactly 1 result. Raises `Exn.t` (with an optionally provided `errorMessage`) if more or less than exactly 1 result is returned. */
   @gentype
   let expectOne: (
@@ -2084,7 +2084,7 @@ module GetRandomPublicProfile: {
   /** Returns exactly 1 result. Returns `None` if more or less than exactly 1 result is returned. */
   @gentype
   let one: (PgTyped.Pg.Client.t, getRandomPublicProfileParams) => promise<option<getRandomPublicProfileResult>>
-
+  
   /** Returns exactly 1 result. Raises `Exn.t` (with an optionally provided `errorMessage`) if more or less than exactly 1 result is returned. */
   @gentype
   let expectOne: (
@@ -4584,3 +4584,5 @@ module GetProfileUpdateEventById: {
 @gentype
 @deprecated("Use 'GetProfileUpdateEventById.many' directly instead")
 let getProfileUpdateEventById = (params, ~client) => GetProfileUpdateEventById.many(client, params)
+
+
