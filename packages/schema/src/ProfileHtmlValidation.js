@@ -47,6 +47,7 @@ function loadCompiler() {
       rules: {
         "doctype-html": "off",
         "no-inline-style": "off",
+        "no-trailing-whitespace": "off",
       },
     });
 
