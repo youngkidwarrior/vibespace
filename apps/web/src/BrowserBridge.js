@@ -24,6 +24,22 @@ export function debugPrompt(eventName, payload = "") {
   console.debug("[vibespace:prompt]", eventName, safePayload);
 }
 
+export function replaceAddressUrl(url) {
+  try {
+    if (typeof window === "undefined") return;
+
+    const nextUrl = String(url || "").trim();
+    if (!nextUrl) return;
+
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (currentUrl === nextUrl) return;
+
+    window.history.replaceState(window.history.state, "", nextUrl);
+  } catch (_error) {
+    // URL canonicalization should never block profile rendering.
+  }
+}
+
 function numeric(value) {
   const next = Number(value);
   return Number.isFinite(next) ? next : 0;

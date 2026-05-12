@@ -186,8 +186,22 @@ let make = (
   ~viewer: option<App.viewerSnapshot>,
   ~availableInvite: option<App.inviteSnapshot>,
   ~viewerUsedInvite: option<App.inviteSnapshot>,
+  ~canonicalizeRootUrl=false,
 ) => {
   let profile = ProfileFragment.use(profile)
+  let location = RelayRouter.Utils.useLocation()
+  let canonicalProfileLink = Routes.Profile.Route.makeLink(~handle=profile.slug)
+  let canonicalUrlKey =
+    (canonicalizeRootUrl ? "1" : "0") ++
+    "|" ++ location.pathname ++ "|" ++ location.search ++ "|" ++ location.hash ++ "|" ++ canonicalProfileLink
+
+  React.useEffect1(() => {
+    if canonicalizeRootUrl && location.pathname == "/" && location.search == "" && location.hash == "" {
+      BrowserBridge.replaceAddressUrl(canonicalProfileLink)
+    }
+    None
+  }, [canonicalUrlKey])
+
   <App
     route
     editorContext={profile->editorContextFromProfile(
