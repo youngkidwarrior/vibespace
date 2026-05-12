@@ -61,5 +61,11 @@ let updatePrompt: (array<item>, PromptDraftId.t, string, IsoTimestamp.t) => arra
 let setMinimized: (array<item>, PromptDraftId.t, bool, IsoTimestamp.t) => array<item>
 let markTouched: (array<item>, PromptDraftId.t, IsoTimestamp.t) => array<item>
 let markSubmitting: (array<item>, PromptDraftId.t, IsoTimestamp.t) => array<item>
+let markSubmittingPhase: (
+  array<item>,
+  PromptDraftId.t,
+  progressPhase,
+  IsoTimestamp.t,
+) => array<item>
 let markError: (array<item>, PromptDraftId.t, string, IsoTimestamp.t) => array<item>
 let markApplied: (array<item>, PromptDraftId.t, string, IsoTimestamp.t) => array<item>
