@@ -140,6 +140,30 @@ describe("BackendSchema profile write authorization", () => {
   });
 });
 
+describe("BackendSchema agent service nullability", () => {
+  it("treats a null failed-session resultVersionId as no result version", async () => {
+    const session = BackendSchema.profileEditSessionFromAgentService({
+      id: "unit-edit-session",
+      profileId: BackendSchema.fixtureProfileId,
+      userId: BackendSchema.fixtureViewerId,
+      providerConversationId: null,
+      status: "failed",
+      progressPhase: "validating",
+      prompt: "Make this page safer.",
+      selectionSnapshotId: null,
+      resultVersionId: null,
+      summary: "Assistant output failed validation.",
+      warnings: [],
+      error: "Invalid profile output.",
+      createdAt: undefined,
+      updatedAt: undefined,
+    });
+
+    expect(session.resultVersionId).toBe(undefined);
+    await expect(BackendSchema.resultVersion(session, contextWithoutDatabase())).resolves.toBe(undefined);
+  });
+});
+
 describe("BackendSchema production fixture safety", () => {
   it("keeps local no-database fixture mode available outside production", async () => {
     const previousEnv = process.env.VIBESPACE_ENV;

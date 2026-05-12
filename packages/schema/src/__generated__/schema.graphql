@@ -305,6 +305,9 @@ type Invite implements Node {
 }
 
 type InviteChainFriend {
+
+  """The current Send avatar URL for this friend profile's stored Sendtag."""
+  avatarUrl: String
   id: ID!
   userId: ID!
   handle: String!
@@ -315,7 +318,6 @@ type InviteChainFriend {
   profileTitle: String!
   avatarInitials: String!
   avatarColor: String!
-  avatarUrl: String
 }
 
 type InviteChainFriendConnection {
@@ -696,3 +698,4 @@ type User implements Node {
   """Relay global id for every type implementing Node."""
   id: ID!
 }
+

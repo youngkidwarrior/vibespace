@@ -7,18 +7,79 @@
 - [x] Fake profile document seeded as raw HTML/CSS.
 - [x] Sandboxed iframe preview renders the profile document.
 - [x] Click selection bridge sends element context to the app shell.
+- [x] Move iframe selection bridge to parent-owned ReScript WebAPI code.
 - [x] Manual HTML/CSS source editing updates preview.
-- [x] Tambo adapter registered for `ProfileDocumentPatch` when an API key exists.
-- [x] Local deterministic agent edit keeps the loop testable without an API key.
-- [x] Add real Tambo prompt submission once a Tambo key is available.
-- [ ] Smoke test a real Tambo generation with `VITE_TAMBO_API_KEY`.
-- [ ] Add output validation before applying agent patches.
+- [x] Codex/OpenAI adapter can request JSON profile patches when an API key exists.
+- [x] Local prompt capture keeps the input loop testable without an API key.
+- [x] Add real Codex/OpenAI prompt submission once an OpenAI key is available.
+- [x] Add canvas-first edit mode with click and drag selection input.
+- [x] Default the canvas route to edit mode for MVP testing.
+- [x] Wire the canvas prompt bubble to Codex/OpenAI and live-apply valid HTML/CSS.
+- [x] Persist prompt drafts locally so closed/minimized prompts can be reopened.
+- [x] Add prompt examples focused on profile aesthetics.
+- [x] Add basic output validation before previewing or applying agent patches.
+- [x] Replace broad regex validation with HTML and CSS parser/compiler diagnostics.
+- [x] Enforce parser/compiler-backed HTML/CSS validation on server-side manual and agent profile writes.
+- [x] Add first-pass opaque/variant ReScript domain hardening.
+- [x] Add first-pass `rescript-relay` and `rescript-relay-router` wiring for viewer profile loading.
+- [x] Hide empty selection drafts from history and local storage.
+- [x] Add friendly profile-part names/descriptions for selection labels.
+- [x] Add safe web context resolution and validated capability placeholders.
+- [x] Restrict active live frames to trusted origins.
+- [x] Add first-pass browser compatibility guidance and CSS feature validation.
+- [x] Add Tier 2 trusted-frame origin validation and generic placeholders.
+- [x] Move trusted-frame capability validation/expansion into ReScript.
+- [x] Resolve safe reference context for vibe, theme, aesthetic, brand, era, and inspired-by restyles.
+- [x] Add first-pass trusted visual asset lookup and validated trusted-image placeholders.
+- [x] Remove regex-derived creative scope and let Codex infer scope from full before-edit context.
+- [x] Render branded fallbacks for trusted image candidates that fail to load.
+- [x] Extract and verify trusted images from allowed source-page HTML instead of trusting model-invented direct URLs.
+- [x] Add one Codex repair-only follow-up when generated HTML/CSS fails validation.
+- [x] Save applied prompt HTML/CSS snapshots in local history and allow validated restore.
+- [x] Treat profile-root/background clicks as weak placement context and make additive prompts preserve existing design by default.
+- [x] Lean runtime prompt toward compact HTML/CSS defaults and generic live-media guidance.
+- [x] Add cancellable Codex requests with visible progress phases.
+- [x] Use AI capability planning instead of phrase regex to decide whether an edit needs web, frames, or images.
+- [x] Warn in the prompt bubble when a request asks for unsupported interactivity and continue with an HTML/CSS-only decorative interpretation.
+- [x] Default canvas prompt generation to the fast model and keep repair on a cheap repair-only pass.
+- [x] Save failed generated HTML/CSS on prompt drafts so follow-up prompts can repair invalid output without applying it.
+- [x] Extract the first reusable ReScript generative-UI package with genType TypeScript surfaces.
+- [x] Add the first ResGraph schema package and stub GraphQL resolvers for the backend contract.
+- [x] Add the first pgschema desired-state schema and replace Atlas local/Tilt wiring.
+- [ ] Smoke test a real Codex/OpenAI generation with backend-only `OPENAI_API_KEY`.
+- [x] Replace the viewer/profile/profile-version GraphQL vertical slice with Postgres-backed `pgtyped-rescript` query modules.
+- [x] Replace invite redemption fixture resolvers with Postgres-backed user/profile/invite/friend creation.
+- [ ] Replace remaining friend activity, edit session, trusted capability, and admin takedown fixture resolvers with Postgres-backed modules.
+- [ ] Add anchor-preservation checks for generated documents.
+- [ ] Promote the dev-server image extractor into a durable provider adapter or Vibespace image proxy/cache if web images become core to the product.
+- [ ] Build the vibe-capture onboarding flow after invite-link profile creation is stable.
+- [ ] Add random-profile discovery for visitors without an invite or local account.
+- [ ] Add a hideable, movable friends-list profile component ordered by account creation.
 
 ## Next Prototype Iterations
 
 - Add one-click reset to seeded document.
-- Add revision history and undo.
+- Add richer revision history and undo beyond local applied-prompt restore.
 - Add structured patch operations.
 - Add visual diff between revisions.
-- Add prompt examples focused on profile aesthetics.
+- [x] Install and configure ReScript-shadcn for app-native UI.
+- [x] Rewrite app-native controls, panels, alerts, source editors, and Codex chat to use ReScript-shadcn primitives.
+- Tune and visually expose buffered selected-element metadata for drag selections.
+- Capture a full-page before screenshot alongside the selected-region crop for model context.
+- Turn captured selection payloads into the canonical Codex request format.
+- Support multiple simultaneous open prompt bubbles anchored to different selections.
+- Explore docs-only Slack/Claude chatbox prior art and save recommendations in `docs/CHATBOX_PRIOR_ART_REVIEW.md`.
+- Add retrieval of short `docs/agent-context` excerpts into the chat-bubble prompt when relevant.
+- Evaluate moving more detailed runtime prompt rules into searchable `docs/agent-context` snippets.
+- Add a typed Codex request builder so app code cannot construct raw wire records directly.
+- Add structured component-level patch operations before attempting pseudo-streamed or parallel non-overlapping profile edits.
+- Add an explicit high-quality/deep-design control to the canvas prompt if fast-model output is not enough for broad redesigns.
+- Introduce typed geometry/pixel units if selection layout math keeps expanding.
+- Add UI and policy docs for reviewing or adding trusted frame origins.
+- Explore Codex `/plan`-style clarification support once the API and UI can pause, ask follow-up questions, and resume an edit.
+- Add an image candidate picker, attribution review UI, and local/proxy cache before allowing published profiles to depend on public web images.
+- Add Playwright smoke tests in Firefox, Chromium, and WebKit for fixture rendering, generated CSS validation, and trusted-frame placeholder expansion.
+- Expand the web capability registry only after each provider has validation, preview rendering, and abuse-case tests.
 - Add a fake Send Store item fixture only after the profile authoring loop feels strong.
+- Continue extracting `@vibespace/generative-ui`: move provider-agnostic resolver contracts into the GraphQL-side assistant service once Send Stores has a concrete server/API shape.
+- Design the React Native translation layer for Send Stores before attempting to reuse any Vibespace iframe, DOM, or screenshot code.

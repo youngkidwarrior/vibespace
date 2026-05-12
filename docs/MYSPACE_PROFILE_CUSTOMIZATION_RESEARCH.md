@@ -40,7 +40,9 @@ If the user can click a profile section and say "make this look like a neon arca
 ```mermaid
 flowchart LR
   User[User] --> Click[Clicks profile element]
+  User --> Drag[Drags visual area]
   Click --> Selection[SelectedElement context]
+  Drag --> Selection
   User --> Prompt[Types style instruction]
   Selection --> Agent[Agent edit request]
   Prompt --> Agent
@@ -54,6 +56,6 @@ flowchart LR
 
 - Full-document replacement may be simpler than patching for early agent experiments.
 - Stable `data-vibespace-id` attributes are enough for point-and-click context.
+- Dragged area screenshots may produce better model input than DOM selection alone.
 - Plain CSS is expressive enough for the first prototype; no generated JavaScript is allowed.
 - The UI shell should stay restrained so the generated profile owns the personality.
-
