@@ -879,6 +879,17 @@ let currentProfileVersion = (profile: profile): option<profileVersion> =>
   | Some(versionId) => profileVersionByRawId(versionId)
   }
 
+let profileHasCompletedCurrentVersion = (profile: profile): bool =>
+  switch profile->currentProfileVersion {
+  | Some(version) =>
+    switch (version.source, version.validationStatus) {
+    | (ProfileVersionSourceImport, _) => false
+    | (_, ValidationStatusValid) => true
+    | (_, ValidationStatusInvalid) => false
+    }
+  | None => false
+  }
+
 let profileVersionsForProfile = (profileId: ResGraph.id): array<profileVersion> =>
   fixtureProfileVersions->Array.filter(version => sameId(version.profileId, profileId))
 
@@ -2302,8 +2313,8 @@ let fixtureInviteChainFriendsForProfile = (profile: profile): array<inviteChainF
   fixtureUsers->Array.filterMap(user =>
     switch (sameId(user.id, profile.ownerUserId), user.status, profileByOwnerId(user.id)) {
     | (false, UserStatusEnabled, Some(friendProfile)) =>
-      switch friendProfile.visibility {
-      | ProfileVisibilityFriends =>
+      switch (friendProfile.visibility, friendProfile->profileHasCompletedCurrentVersion) {
+      | (ProfileVisibilityFriends, true) =>
         Some(inviteChainFriendFromFields(
           ~userId=user.id->idToString,
           ~handle=user.handle,
@@ -2313,7 +2324,7 @@ let fixtureInviteChainFriendsForProfile = (profile: profile): array<inviteChainF
           ~profileSlug=friendProfile.slug,
           ~profileTitle=friendProfile.title,
         ))
-      | ProfileVisibilityDisabled => None
+      | (ProfileVisibilityDisabled, _) | (_, false) => None
       }
     | _ => None
     }
