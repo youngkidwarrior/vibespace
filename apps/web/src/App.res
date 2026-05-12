@@ -255,7 +255,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     viewportWidth: 0.0,
     viewportHeight: 0.0,
   })
-  let (isEditing, setIsEditing) = React.useState(() => true)
+  let (isEditing, setIsEditing) = React.useState(() => false)
   let (historyOpen, setHistoryOpen) = React.useState(() => false)
   let (promptHistory, setPromptHistory) = React.useState(() => PromptHistory.load())
   let (currentProfileVersionId, setCurrentProfileVersionId) = React.useState(() => editorContext.currentVersionId)
@@ -289,6 +289,10 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     setAvailableInvite(_ => editorContext.availableInvite)
     setViewerUsedInvite(_ => editorContext.viewerUsedInvite)
     setReactivateInviteConfirmOpen(_ => false)
+    setIsEditing(_ => false)
+    setSelection(_ => ProfileSelection.empty)
+    setHistoryOpen(_ => false)
+    setActivePromptId(_ => None)
     None
   }, [editorContextKey])
 
@@ -1237,6 +1241,30 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
   | Some(_) | None => None
   }
 
+  let renderActiveInviteGiftButton = () =>
+    switch shareableInvite {
+    | Some(_) =>
+      <Button
+        className="relative size-11 overflow-visible rounded-2xl border-amber-200 bg-amber-300 text-neutral-950 shadow-xl shadow-amber-500/25 hover:bg-amber-200"
+        variant=Outline
+        size=IconLg
+        type_="button"
+        title="Open invite"
+        onClick={_ => openInviteModal()}>
+        <span
+          className="absolute inset-0 rounded-2xl bg-amber-300/45 animate-ping motion-reduce:animate-none"
+          ariaHidden=true
+        />
+        <span
+          className="relative inline-grid size-full place-items-center animate-[bounce_2.6s_ease-in-out_infinite] motion-reduce:animate-none"
+          ariaHidden=true>
+          <Icons.Gift size=20 ariaHidden=true />
+        </span>
+        <span className="sr-only"> {React.string("Open invite")} </span>
+      </Button>
+    | None => React.null
+    }
+
   let reactivateUsedInviteCode = () => {
     setDocumentNotice(_ => Some("Reactivating the invite code..."))
     reactivateUsedInvite(
@@ -1394,119 +1422,65 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     | Some(invite) => !viewerIsDisabled && invite->inviteIsRedeemed
     | None => false
     }
+    let activeInviteIsShareable = switch shareableInvite {
+    | Some(_) => true
+    | None => false
+    }
+    let showClaimedInviteControls = !activeInviteIsShareable && canReactivateUsedInvite
 
-    <section className="mx-auto mt-4 grid w-[min(1500px,100%)] grid-cols-2 gap-4 max-[900px]:grid-cols-1">
-      <Card className="border-amber-200 bg-amber-50/70">
-        <Card.Header className="flex items-center justify-between gap-3">
-          <div>
-            <p className="m-0 mb-1 text-[11px] font-black uppercase tracking-wider text-amber-700">
-              {React.string("Invite")}
-            </p>
-            <Card.Title> {React.string("One person gets in")} </Card.Title>
-            <Card.Description>
-              {React.string("Every user gets one invite. Once it is used, the share link is gone.")}
-            </Card.Description>
-          </div>
-          <Card.Action>
-            <span className="inline-grid size-10 place-items-center rounded-2xl bg-neutral-950 text-amber-200 shadow-lg" ariaHidden=true>
-              <Icons.Gift size=18 ariaHidden=true />
-            </span>
-          </Card.Action>
-        </Card.Header>
-        <Card.Content className="grid gap-3">
-          {switch shareableInvite {
-          | Some((_invite, inviteLink)) =>
-            <div className="rounded-2xl border border-amber-200 bg-white/80 p-3.5">
-              <p className="m-0 break-all text-sm font-semibold leading-snug text-neutral-950">
-                {React.string(inviteLink)}
+    if !showClaimedInviteControls {
+      React.null
+    } else {
+      <section className="mx-auto mt-4 grid w-[min(760px,100%)] gap-4">
+        <Card className="border-red-200 bg-white">
+          <Card.Header className="flex items-center justify-between gap-3">
+            <div>
+              <p className="m-0 mb-1 text-[11px] font-black uppercase tracking-wider text-red-700">
+                {React.string("Claimed invite")}
               </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button type_="button" onClick={_ => openInviteModal()}>
-                  <Icons.Gift size=14 ariaHidden=true />
-                  {React.string("Open invite")}
-                </Button>
-                <Button variant=Outline type_="button" onClick={_ => copyInviteLink(inviteLink)}>
-                  <Icons.Copy size=14 ariaHidden=true />
-                  {React.string("Copy link")}
-                </Button>
-                {inviteCopyStatus->Option.mapOr(React.null, status =>
-                  <span className="text-xs font-bold text-neutral-500"> {React.string(status)} </span>
-                )}
+              <Card.Title> {React.string("Reactivate your invite link")} </Card.Title>
+              <Card.Description>
+                {React.string("Give back the invite code you used by disabling this account.")}
+              </Card.Description>
+            </div>
+            <Card.Action>
+              <span className="inline-grid size-10 place-items-center rounded-2xl bg-red-50 text-red-700" ariaHidden=true>
+                <Icons.RefreshCcw size=18 ariaHidden=true />
+              </span>
+            </Card.Action>
+          </Card.Header>
+          <Card.Content className="grid gap-3">
+            {switch viewerUsedInvite {
+            | Some(invite) =>
+              <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-neutral-500">
+                    {React.string("Used invite " ++ invite.status->String.toLowerCase)}
+                  </span>
+                  {invite.redeemedAt->Option.mapOr(React.null, redeemedAt =>
+                    <span className="text-xs font-bold text-neutral-500"> {React.string(redeemedAt)} </span>
+                  )}
+                </div>
+                <p className="mt-2 mb-0 text-sm leading-relaxed text-neutral-600">
+                  {React.string("Reactivation makes this invite usable again and disables this account.")}
+                </p>
               </div>
+            | None => React.null
+            }}
+            <div className="flex justify-end">
+              <Button
+                className="border-red-200"
+                variant=Destructive
+                type_="button"
+                disabled={!canReactivateUsedInvite || reactivateUsedInviteInFlight}
+                onClick={_ => setReactivateInviteConfirmOpen(_ => true)}>
+                {React.string("Reactivate invite code")}
+              </Button>
             </div>
-          | None =>
-            <div className="rounded-2xl border border-amber-200 bg-white/70 p-3.5">
-              <p className="m-0 text-sm font-bold text-neutral-950">
-                {React.string("No shareable invite is available.")}
-              </p>
-              <p className="mt-1.5 mb-0 text-sm leading-relaxed text-neutral-600">
-                {React.string("If your one invite was already used, the gift button stays hidden.")}
-              </p>
-            </div>
-          }}
-        </Card.Content>
-      </Card>
-
-      <Card className="border-red-200 bg-white">
-        <Card.Header className="flex items-center justify-between gap-3">
-          <div>
-            <p className="m-0 mb-1 text-[11px] font-black uppercase tracking-wider text-red-700">
-              {React.string("Danger zone")}
-            </p>
-            <Card.Title> {React.string("Reactivate your invite link")} </Card.Title>
-            <Card.Description>
-              {React.string("Give back the invite code you used by disabling this account.")}
-            </Card.Description>
-          </div>
-          <Card.Action>
-            <span className="inline-grid size-10 place-items-center rounded-2xl bg-red-50 text-red-700" ariaHidden=true>
-              <Icons.RefreshCcw size=18 ariaHidden=true />
-            </span>
-          </Card.Action>
-        </Card.Header>
-        <Card.Content className="grid gap-3">
-          {viewerIsDisabled
-            ? <Alert variant=Destructive>
-                <Alert.Description>
-                  {React.string("This account is disabled. The invite chain will hide it from active profile surfaces.")}
-                </Alert.Description>
-              </Alert>
-            : React.null}
-          {switch viewerUsedInvite {
-          | Some(invite) =>
-            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[11px] font-black uppercase tracking-wider text-neutral-500">
-                  {React.string("Used invite " ++ invite.status->String.toLowerCase)}
-                </span>
-                {invite.redeemedAt->Option.mapOr(React.null, redeemedAt =>
-                  <span className="text-xs font-bold text-neutral-500"> {React.string(redeemedAt)} </span>
-                )}
-              </div>
-              <p className="mt-2 mb-0 text-sm leading-relaxed text-neutral-600">
-                {React.string("Reactivation makes this invite usable again and disables this account.")}
-              </p>
-            </div>
-          | None =>
-            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3.5">
-              <p className="m-0 text-sm leading-relaxed text-neutral-600">
-                {React.string("This account does not have a redeemed invite to reactivate.")}
-              </p>
-            </div>
-          }}
-          <div className="flex justify-end">
-            <Button
-              className="border-red-200"
-              variant=Destructive
-              type_="button"
-              disabled={!canReactivateUsedInvite || reactivateUsedInviteInFlight}
-              onClick={_ => setReactivateInviteConfirmOpen(_ => true)}>
-              {React.string("Reactivate invite code")}
-            </Button>
-          </div>
-        </Card.Content>
-      </Card>
-    </section>
+          </Card.Content>
+        </Card>
+      </section>
+    }
   }
 
   let renderSelectionOverlay = () =>
@@ -1661,16 +1635,18 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     | Some(_) | None => React.null
     }
 
-  let renderCanvasRoute = () =>
+  let renderCanvasRoute = () => {
+    let headerButtonClass = "h-10 rounded-xl px-3.5 text-sm font-black shadow-sm"
     <main className="relative min-h-screen overflow-hidden bg-neutral-100">
       // TODO(friends-list): Add the hideable, movable friends-list profile
       // component once invite-chain friendships are visible in the editor.
-      <header className="pointer-events-none fixed left-4 right-4 top-4 z-40 flex items-center justify-between gap-3 max-md:left-2.5 max-md:right-2.5 max-md:top-2.5 max-md:justify-end">
+      <header className="pointer-events-none fixed left-4 right-4 top-4 z-40 flex items-center justify-between gap-3 max-md:left-2.5 max-md:right-2.5 max-md:top-2.5">
         <div className="pointer-events-auto inline-flex items-center gap-2">
+          {renderActiveInviteGiftButton()}
           <Button
-            className="bg-white/85 font-black backdrop-blur-md max-md:hidden"
+            className={headerButtonClass ++ " bg-white/85 backdrop-blur-md max-md:hidden"}
             variant=Secondary
-            size=Sm
+            size=Lg
             type_="button"
             onMouseEnter={_ => preloadEditorRoute()}
             onMouseDown={_ => preloadEditorRoute()}
@@ -1682,8 +1658,9 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
           <Button
+            className=headerButtonClass
             variant=Outline
-            size=Sm
+            size=Lg
             type_="button"
             onMouseEnter={_ => preloadSourceRoute()}
             onMouseDown={_ => preloadSourceRoute()}
@@ -1698,8 +1675,9 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
           </Button>
           {isEditing
             ? <Button
+                className=headerButtonClass
                 variant={historyOpen ? Secondary : Outline}
-                size=Sm
+                size=Lg
                 type_="button"
                 title={historyOpen ? "Hide history" : "View history"}
                 onClick={_ => setHistoryOpen(current => !current)}>
@@ -1707,10 +1685,10 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
               </Button>
             : React.null}
           {isEditing
-            ? <Button size=Sm type_="button" onClick={_ => clearEditMode()}>
+            ? <Button className=headerButtonClass size=Lg type_="button" onClick={_ => clearEditMode()}>
                 {React.string("Done")}
               </Button>
-            : <Button size=Sm type_="button" onClick={_ => setIsEditing(_ => true)}>
+            : <Button className=headerButtonClass size=Lg type_="button" onClick={_ => setIsEditing(_ => true)}>
                 {React.string("Edit")}
               </Button>}
         </div>
@@ -1773,8 +1751,10 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
         {renderPromptBubble()}
         {renderMinimizedPromptTray()}
         {renderHistorySidebar()}
+        {renderInviteModal()}
       </section>
     </main>
+  }
 
   let renderSourceRoute = () =>
     <main className="min-h-screen bg-neutral-100 p-6 max-md:p-3.5">

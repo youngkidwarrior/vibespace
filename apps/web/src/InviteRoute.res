@@ -194,6 +194,9 @@ let make = (~queryRef, ~code: string) => {
   let (redeemedAccount, setRedeemedAccount) = React.useState((): option<redeemedAccount> =>
     initialRedeemedAccount
   )
+  let (locallyRedeemedInviteId, setLocallyRedeemedInviteId) = React.useState((): option<string> =>
+    None
+  )
   let (redeemInvite, redeemInviteInFlight) = ProfileVersionMutations.RedeemInviteMutation.use()
   let (submitAgentEdit, submitAgentEditInFlight) = ProfileVersionMutations.SubmitAgentEditMutation.use()
 
@@ -271,6 +274,7 @@ let make = (~queryRef, ~code: string) => {
                     profileSlug: payload.profile.slug,
                   })
                 )
+                setLocallyRedeemedInviteId(_ => Some(payload.invite.id))
                 setAnswers(current => {...current, profileName: payload.user.displayName})
                 setMessage(_ => None)
                 setStep(_ => ChooseVibe)
@@ -760,7 +764,13 @@ let make = (~queryRef, ~code: string) => {
     | (Some(viewer), Some(invitee)) => viewer.id == invitee.id
     | _ => false
     }
-    let canUseInvite = available || (inviteBelongsToViewer && redeemedAccount->Option.isSome)
+    let locallyRedeemedThisInvite = switch locallyRedeemedInviteId {
+    | Some(inviteId) => inviteId == invite.id
+    | None => false
+    }
+    let canUseInvite = available || (
+      redeemedAccount->Option.isSome && (inviteBelongsToViewer || locallyRedeemedThisInvite)
+    )
     if !canUseInvite {
       renderShell(
         <article className="w-[min(560px,100%)] rounded-3xl border border-white/70 bg-white/90 p-7 shadow-2xl backdrop-blur-xl">
