@@ -422,6 +422,7 @@ let capabilityPolicyForPrompt = () =>
     "Trusted images are limited to direct HTTPS image URLs whose origin exactly matches one of these trusted origins: " ++
     WebCapabilityPolicy.trustedImageOrigins->Array.join(", ") ++
     ".",
+    "Inline SVG is allowed only for model-authored decorative/vector UI using Vibespace's safe static SVG subset. Do not fetch, link, embed, or reference remote SVG files.",
     "Do not write raw iframe, script, embed, object, audio src, video src, remote image, form, or arbitrary link markup.",
     "For a live frame, output an inert placeholder element with data-vibespace-capability=\"trusted_frame\", data-vibespace-origin, data-vibespace-src, data-vibespace-name, data-vibespace-description, and friendly fallback text.",
     "Copy data-vibespace-origin and data-vibespace-src exactly from web_context.safeFrames. Do not invent, modify, redirect, shorten, or search for URLs yourself.",

@@ -1,5 +1,10 @@
 type validationError = UnsafeProfileSource(string)
 
+type svgTrustSummary = {
+  knownCount: int,
+  unknownCount: int,
+}
+
 type result =
   | Valid
   | Invalid(validationError)
@@ -12,6 +17,9 @@ external validateCssSource: string => promise<string> = "validateCssSource"
 
 @module("./ProfileValidationCompiler.js")
 external repairHtmlSource: string => promise<string> = "repairHtmlSource"
+
+@module("./ProfileValidationCompiler.js")
+external inspectSvgTrust: string => svgTrustSummary = "inspectSvgTrust"
 
 let maxDocumentLength = 200000
 
@@ -48,6 +56,8 @@ let repairHtml = async (html: HtmlSource.t) => {
   let repairedHtml = await html->HtmlSource.toString->repairHtmlSource
   repairedHtml->HtmlSource.make
 }
+
+let svgTrust = (html: HtmlSource.t) => html->HtmlSource.toString->inspectSvgTrust
 
 let message = error =>
   switch error {
