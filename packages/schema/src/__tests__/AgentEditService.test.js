@@ -108,10 +108,28 @@ describe("AgentEditService generated CSS repair", () => {
 });
 
 describe("AgentEditService web context resolution", () => {
+  const frameIntentPlan = {
+    needsTrustedImage: false,
+    imageQuery: "",
+    entityKind: "media",
+    needsTrustedFrame: true,
+    mediaQuery: "",
+    reasoning: "test fixture",
+  };
+
+  const personImageIntentPlan = (imageQuery) => ({
+    needsTrustedImage: true,
+    imageQuery,
+    entityKind: "person",
+    needsTrustedFrame: false,
+    mediaQuery: "",
+    reasoning: "test fixture",
+  });
+
   it("turns YouTube watch URLs into trusted frame context", async () => {
     const webContext = await resolveWebContextForPrompt(
       "use oembed for https://www.youtube.com/watch?v=GR3Liudev18&list=RDGR3Liudev18&start_radio=1",
-      {fetchImpl: undefined},
+      { fetchImpl: undefined, intentPlan: frameIntentPlan },
     );
 
     expect(webContext.status).toBe("resolved");
@@ -125,6 +143,7 @@ describe("AgentEditService web context resolution", () => {
     const webContext = await resolveWebContextForPrompt(
       "embed https://www.youtube.com/watch?v=GR3Liudev18",
       {
+        intentPlan: frameIntentPlan,
         fetchImpl: async () => ({
           ok: true,
           json: async () => ({
@@ -143,6 +162,7 @@ describe("AgentEditService web context resolution", () => {
 
   it("resolves trusted Wikimedia raster images for image prompts", async () => {
     const webContext = await resolveWebContextForPrompt("make a real photo tribute page for 50 Cent", {
+      intentPlan: personImageIntentPlan("50 Cent"),
       fetchImpl: async () => ({
         ok: true,
         json: async () => commonsPayload(),
@@ -160,6 +180,7 @@ describe("AgentEditService web context resolution", () => {
 
   it("drops Wikimedia SVG files from trusted image context", async () => {
     const webContext = await resolveWebContextForPrompt("use a wikimedia image of 50 Cent", {
+      intentPlan: personImageIntentPlan("50 Cent"),
       fetchImpl: async () => ({
         ok: true,
         json: async () =>
@@ -172,6 +193,50 @@ describe("AgentEditService web context resolution", () => {
 
     expect(webContext.status).toBe("not_found");
     expect(webContext.safeImages).toEqual([]);
+  });
+
+  it("skips Commons keyword search when the intent plan disables trusted images", async () => {
+    let calls = 0;
+    const webContext = await resolveWebContextForPrompt(
+      "remove this photo placeholder and add an image of shaq",
+      {
+        intentPlan: {
+          needsTrustedImage: false,
+          imageQuery: "",
+          entityKind: "none",
+          needsTrustedFrame: false,
+          mediaQuery: "",
+          reasoning: "test fixture",
+        },
+        fetchImpl: async () => {
+          calls += 1;
+          return { ok: true, json: async () => commonsPayload() };
+        },
+      },
+    );
+
+    expect(calls).toBe(0);
+    expect(webContext.status).toBe("not_needed");
+    expect(webContext.safeImages).toEqual([]);
+  });
+
+  it("uses the intent plan imageQuery verbatim when searching Commons", async () => {
+    const searches = [];
+    const webContext = await resolveWebContextForPrompt(
+      "remove this photo placeholder and add an image of shaq",
+      {
+        intentPlan: personImageIntentPlan("Shaquille O'Neal"),
+        fetchImpl: async (apiUrl) => {
+          searches.push(apiUrl);
+          return { ok: true, json: async () => commonsPayload() };
+        },
+      },
+    );
+
+    expect(searches).toHaveLength(1);
+    expect(searches[0]).toContain("gsrsearch=Shaquille+O%27Neal");
+    expect(webContext.status).toBe("resolved");
+    expect(webContext.safeImages[0]?.origin).toBe("https://upload.wikimedia.org");
   });
 });
 

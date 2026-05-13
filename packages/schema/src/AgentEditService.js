@@ -118,6 +118,68 @@ const profileSecurityAuditFormat = {
   },
 };
 
+const webContextIntentPlanEntityKinds = [
+  "person",
+  "place",
+  "product",
+  "brand",
+  "book",
+  "movie",
+  "artwork",
+  "media",
+  "none",
+];
+
+const webContextIntentPlanFormat = {
+  type: "json_schema",
+  name: "vibespace_web_context_intent_plan",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      needsTrustedImage: {
+        type: "boolean",
+        description:
+          "True only when the user explicitly asks to add, insert, replace, or fetch a real photo, image, picture, portrait, poster, or visual of a specific subject. False for color, layout, copy, removals, or vague aesthetic edits.",
+      },
+      imageQuery: {
+        type: "string",
+        description:
+          "Canonical search target for a Wikimedia Commons image lookup, using the full proper name (for example 'shaq' becomes 'Shaquille O'Neal'). Empty string when needsTrustedImage is false.",
+      },
+      entityKind: {
+        type: "string",
+        enum: webContextIntentPlanEntityKinds,
+        description: "Best-guess category of the image subject. Use 'none' when no trusted image is needed.",
+      },
+      needsTrustedFrame: {
+        type: "boolean",
+        description:
+          "True only when the user explicitly asks for playable media, a player, audio, video, or pastes a YouTube, Spotify, SoundCloud, Vimeo, or Apple Music URL.",
+      },
+      mediaQuery: {
+        type: "string",
+        description: "Search target for playable media (song, video, artist). Empty string when needsTrustedFrame is false.",
+      },
+      reasoning: {
+        type: "string",
+        description: "One short sentence summarizing why these flags were chosen. Used for telemetry.",
+      },
+    },
+    required: ["needsTrustedImage", "imageQuery", "entityKind", "needsTrustedFrame", "mediaQuery", "reasoning"],
+  },
+};
+
+const defaultWebContextIntentPlan = Object.freeze({
+  needsTrustedImage: false,
+  imageQuery: "",
+  entityKind: "none",
+  needsTrustedFrame: false,
+  mediaQuery: "",
+  reasoning: "Defaulted to no web capability lookup.",
+});
+
 function serverFailure(message, overrides = {}) {
   return {
     ok: false,
@@ -306,16 +368,82 @@ function imageParts(label, dataUrl) {
   ];
 }
 
-function hasMediaIntent(text) {
-  return /\b(oembed|embed|playable|player|play|youtube|spotify|soundcloud|video|song|music|audio|track)\b/i.test(
-    String(text || ""),
-  );
+function normalizeWebContextIntentPlan(value) {
+  const entityKind = String(value?.entityKind || "").toLowerCase();
+  const sanitizedKind = webContextIntentPlanEntityKinds.includes(entityKind) ? entityKind : "none";
+  const trimmedImageQuery = String(value?.imageQuery || "").trim().slice(0, 120);
+  const trimmedMediaQuery = String(value?.mediaQuery || "").trim().slice(0, 120);
+  return {
+    needsTrustedImage: value?.needsTrustedImage === true && trimmedImageQuery !== "",
+    imageQuery: trimmedImageQuery,
+    entityKind: sanitizedKind,
+    needsTrustedFrame: value?.needsTrustedFrame === true,
+    mediaQuery: trimmedMediaQuery,
+    reasoning: String(value?.reasoning || "").slice(0, 240),
+  };
 }
 
-function hasImageIntent(text) {
-  return /\b(real\s+)?(photo|image|picture|portrait|poster|visual|wikimedia|commons|celebrity|headshot)\b/i.test(
-    String(text || ""),
-  );
+function xmlEscapeForIntentPrompt(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+export function composeWebContextIntentPrompt(prompt, selectionContext) {
+  return [
+    "Classify a Vibespace profile-edit instruction so the backend can decide whether to fetch a trusted Wikimedia Commons image or a trusted media embed.",
+    "Read the user instruction verbatim. Do not rewrite, expand, summarize, or strip words from it before reasoning.",
+    "Output JSON only. Do not invent URLs. Do not describe what the image should look like; only name the search target.",
+    "",
+    "Rules:",
+    "- needsTrustedImage is true ONLY when the user explicitly asks to add, insert, replace, or fetch a real photo, image, picture, portrait, poster, or visual of a specific subject.",
+    "- For a famous person referenced by nickname or shorthand, imageQuery must be the canonical full name (for example 'shaq' becomes 'Shaquille O'Neal', 'biggie' becomes 'The Notorious B.I.G.').",
+    "- needsTrustedFrame is true ONLY when the user explicitly asks for playable media, a player, audio, video, or pastes a YouTube, Spotify, SoundCloud, Vimeo, or Apple Music URL.",
+    "- Color, layout, copy, and aesthetic-only edits set both flags false.",
+    "- Removal-only requests (for example 'remove the photo') set both flags false.",
+    "",
+    `<user_instruction>${xmlEscapeForIntentPrompt(prompt)}</user_instruction>`,
+    `<selection_context>${xmlEscapeForIntentPrompt(selectionContext) || "(none)"}</selection_context>`,
+  ].join("\n");
+}
+
+export async function requestWebContextIntentPlan({ apiKey, prompt, selectionContext, model, fetchImpl } = {}) {
+  const fetchTarget = typeof fetchImpl === "function" ? fetchImpl : globalThis.fetch;
+  if (typeof fetchTarget !== "function" || !apiKey) {
+    return { ...defaultWebContextIntentPlan, reasoning: "Intent planner unavailable; defaulted." };
+  }
+
+  try {
+    const response = await fetchTarget("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: model || modelForMode("fast"),
+        input: [
+          {
+            role: "user",
+            content: [{ type: "input_text", text: composeWebContextIntentPrompt(prompt, selectionContext) }],
+          },
+        ],
+        text: { format: webContextIntentPlanFormat },
+      }),
+    });
+    if (!response.ok) {
+      return { ...defaultWebContextIntentPlan, reasoning: "Intent planner HTTP error; defaulted." };
+    }
+    const payload = await response.json().catch(() => null);
+    const outputText = extractOutputText(payload);
+    if (!outputText) {
+      return { ...defaultWebContextIntentPlan, reasoning: "Intent planner returned no output; defaulted." };
+    }
+    return normalizeWebContextIntentPlan(JSON.parse(stripJsonFence(outputText)));
+  } catch {
+    return { ...defaultWebContextIntentPlan, reasoning: "Intent planner threw; defaulted." };
+  }
 }
 
 function trimUrlToken(value) {
@@ -368,20 +496,6 @@ function wikimediaFileTitleFromUrl(rawUrl) {
 
   const filename = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
   return filename ? `File:${filename.replaceAll("_", " ")}` : "";
-}
-
-function imageSearchQueryFromPrompt(prompt) {
-  const withoutUrls = String(prompt || "").replace(/https:\/\/[^\s<>"']+/gi, " ");
-  const cleaned = withoutUrls
-    .replace(
-      /\b(use|add|make|create|show|include|find|fetch|get|real|photo|image|picture|portrait|poster|visual|wikimedia|commons|celebrity|headshot|profile|page|of|for|from|the|a|an|and|with)\b/gi,
-      " ",
-    )
-    .replace(/[^\p{L}\p{N}\s.'-]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return cleaned.slice(0, 80);
 }
 
 function commonsApiUrlForSearch(query) {
@@ -606,13 +720,22 @@ async function trustedFrameForPromptUrl(rawUrl, fetchImpl) {
 }
 
 export async function resolveWebContextForPrompt(prompt, options = {}) {
+  const intentPlan = normalizeWebContextIntentPlan(options.intentPlan || defaultWebContextIntentPlan);
   const urls = extractPromptHttpsUrls(prompt);
-  const mediaIntent = hasMediaIntent(prompt);
-  const imageIntent = hasImageIntent(prompt);
 
   const fetchImpl = Object.prototype.hasOwnProperty.call(options, "fetchImpl")
     ? options.fetchImpl
     : globalThis.fetch;
+
+  logAgentEditPhase("web_context_intent", {
+    needsTrustedImage: intentPlan.needsTrustedImage,
+    needsTrustedFrame: intentPlan.needsTrustedFrame,
+    entityKind: intentPlan.entityKind,
+    imageQuery: intentPlan.imageQuery,
+    mediaQuery: intentPlan.mediaQuery,
+    promptUrlCount: urls.length,
+  });
+
   const safeFrames = [];
   for (const url of urls) {
     const frame = await trustedFrameForPromptUrl(url, fetchImpl);
@@ -622,14 +745,23 @@ export async function resolveWebContextForPrompt(prompt, options = {}) {
   const safeImages = [];
   const wikimediaTitles = urls.map(wikimediaFileTitleFromUrl).filter(Boolean);
   for (const title of wikimediaTitles) {
-    safeImages.push(...(await fetchWikimediaImages(commonsApiUrlForTitle(title), title.replace(/^File:/i, ""), fetchImpl)));
+    safeImages.push(
+      ...(await fetchWikimediaImages(commonsApiUrlForTitle(title), title.replace(/^File:/i, ""), fetchImpl)),
+    );
   }
 
-  const promptImageQuery = imageIntent ? imageSearchQueryFromPrompt(prompt) : "";
-  if (promptImageQuery && safeImages.length === 0) {
-    safeImages.push(
-      ...(await fetchWikimediaImages(commonsApiUrlForSearch(promptImageQuery), promptImageQuery, fetchImpl)),
+  if (intentPlan.needsTrustedImage && safeImages.length === 0 && intentPlan.imageQuery !== "") {
+    logAgentEditPhase("web_context_commons_search", { query: intentPlan.imageQuery });
+    const commonsResults = await fetchWikimediaImages(
+      commonsApiUrlForSearch(intentPlan.imageQuery),
+      intentPlan.imageQuery,
+      fetchImpl,
     );
+    logAgentEditPhase("web_context_commons_search_result", {
+      query: intentPlan.imageQuery,
+      resultCount: commonsResults.length,
+    });
+    safeImages.push(...commonsResults);
   }
 
   const dedupedSafeImages = Array.from(
@@ -637,20 +769,51 @@ export async function resolveWebContextForPrompt(prompt, options = {}) {
   ).slice(0, 6);
 
   if (safeFrames.length === 0 && dedupedSafeImages.length === 0) {
+    const needsAnything = intentPlan.needsTrustedFrame || intentPlan.needsTrustedImage;
+    const fallbackIntentKind = intentPlan.needsTrustedFrame
+      ? "media"
+      : intentPlan.needsTrustedImage && intentPlan.entityKind !== "none"
+        ? intentPlan.entityKind
+        : "reference";
+    const reason = intentPlan.needsTrustedFrame && safeFrames.length === 0
+      ? "no_trusted_frame"
+      : intentPlan.needsTrustedImage && intentPlan.imageQuery === ""
+        ? "missing_image_query"
+        : intentPlan.needsTrustedImage
+          ? "no_commons_results"
+          : "no_capability_needed";
+    logAgentEditPhase("web_context_resolve", {
+      status: needsAnything ? "not_found" : "not_needed",
+      intentKind: fallbackIntentKind,
+      reason,
+    });
     return sanitizeWebContext({
-      status: mediaIntent || imageIntent ? "not_found" : "not_needed",
-      intentKind: mediaIntent ? "media" : imageIntent ? "person" : "reference",
-      warnings: mediaIntent
+      status: needsAnything ? "not_found" : "not_needed",
+      intentKind: fallbackIntentKind,
+      warnings: intentPlan.needsTrustedFrame
         ? ["Media lookup did not produce a trusted-origin frame URL."]
-        : imageIntent
+        : intentPlan.needsTrustedImage
           ? ["Image lookup did not produce a trusted raster image from Wikimedia Commons."]
           : [],
     });
   }
 
+  const resolvedIntentKind = safeFrames.length > 0
+    ? "media"
+    : intentPlan.entityKind !== "none"
+      ? intentPlan.entityKind
+      : "reference";
+
+  logAgentEditPhase("web_context_resolve", {
+    status: "resolved",
+    intentKind: resolvedIntentKind,
+    safeFrames: safeFrames.length,
+    safeImages: dedupedSafeImages.length,
+  });
+
   return sanitizeWebContext({
     status: "resolved",
-    intentKind: mediaIntent ? "media" : "person",
+    intentKind: resolvedIntentKind,
     summary:
       safeFrames.length > 0 && dedupedSafeImages.length > 0
         ? "Resolved trusted media and image context for this profile request."
@@ -1596,8 +1759,23 @@ async function runAgentEdit(input, state) {
   try {
     await updateSessionProgress(databaseUrl, state.session.id, "checking_web_context");
     currentPhase = "checking_web_context";
+    const intentPlanStartedAt = agentEditNow();
+    const intentPlan = await requestWebContextIntentPlan({
+      apiKey,
+      prompt,
+      selectionContext: input.selectionAgentContext || input.selectionLabel || "",
+    });
+    logAgentEditPhase("web_context_intent_call", {
+      sessionId,
+      elapsedMs: agentEditNow() - intentPlanStartedAt,
+      needsTrustedImage: intentPlan.needsTrustedImage,
+      needsTrustedFrame: intentPlan.needsTrustedFrame,
+      entityKind: intentPlan.entityKind,
+      imageQuery: intentPlan.imageQuery,
+      mediaQuery: intentPlan.mediaQuery,
+    });
     const webContextStartedAt = agentEditNow();
-    const webContext = await resolveWebContextForPrompt(prompt);
+    const webContext = await resolveWebContextForPrompt(prompt, { intentPlan });
     logAgentEditPhase("web_context", {
       sessionId,
       elapsedMs: agentEditNow() - webContextStartedAt,
