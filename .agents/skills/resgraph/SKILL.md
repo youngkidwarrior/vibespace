@@ -38,6 +38,7 @@ Load only the focused reference needed for the task:
 
 - `references/tooling.md`: commands, LSP/watch workflow, `find-definition`, generated output, validation chain.
 - `references/schema-authoring.md`: resolver annotations, schema comments, project structure, circular dependencies, interfaces, generated files.
+- `references/input-objects.md`: `@gql.inputObject`, optional fields, ResGraph.id, when to use vs labeled args, FFI helper types.
 - `references/pagination.md`: connection object types, `connectionFromArray`, stable cursors, and profile-version history guidance.
 - `references/unions-errors-as-data.md`: explicit unions, inferred unions, errors-as-data mutation results, exhaustive switches, Relay SDL caveats.
 
@@ -62,7 +63,6 @@ Add focused reference files as these patterns become proven in working code:
 - Enums
 - Interfaces
 - Custom Scalars
-- Input Objects
 - Input Unions
 - Query
 - Mutations
