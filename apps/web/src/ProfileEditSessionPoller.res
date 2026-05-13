@@ -8,6 +8,10 @@ module Query = %relay(`
       summary
       warnings
       error
+      failedHtml
+      failedCss
+      failedValidationMessage
+      failedValidationSpanJson
       resultVersionId
       selectionSnapshot {
         id
@@ -127,7 +131,16 @@ module Result = {
       }
     }, [dataKey])
 
-    React.null
+    switch data.profileEditSessionById {
+    | Some(session) if session.status == FAILED =>
+      <FailedPatchPanel
+        failedHtml=session.failedHtml
+        failedCss=session.failedCss
+        failedValidationMessage=session.failedValidationMessage
+        failedValidationSpanJson=session.failedValidationSpanJson
+      />
+    | _ => React.null
+    }
   }
 }
 
