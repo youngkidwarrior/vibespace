@@ -133,6 +133,42 @@ function normalizeAttributeValue(value) {
   return String(value || "").trim();
 }
 
+function attributeMapForElement(element) {
+  const attributes = new Map();
+  for (const attribute of element?.attributes || []) {
+    attributes.set(String(attribute.key || "").toLowerCase(), normalizeAttributeValue(attribute.value));
+  }
+  return attributes;
+}
+
+export function trustedCapabilityPlaceholdersFromHtml(html) {
+  const compiler = loadCompiler();
+  let root;
+  try {
+    root = compiler.htmlPolicyParser.parseHtml(`<main data-vibespace-validation-root>${String(html || "")}</main>`);
+  } catch (caught) {
+    throw new Error(parserErrorMessage(caught, "Profile content has invalid HTML"));
+  }
+
+  const placeholders = [];
+  compiler.walk.depthFirst(root, (element) => {
+    const attributes = attributeMapForElement(element);
+    const capability = attributes.get("data-vibespace-capability") || "";
+    if (!capability) return;
+
+    placeholders.push({
+      capability,
+      source: attributes.get("data-vibespace-src") || "",
+      origin: attributes.get("data-vibespace-origin") || "",
+      name: attributes.get("data-vibespace-name") || "",
+      description: attributes.get("data-vibespace-description") || "",
+      alt: attributes.get("data-vibespace-alt") || "",
+    });
+  });
+
+  return placeholders;
+}
+
 function hasExecutableProtocol(value) {
   const trimmed = normalizeAttributeValue(value).toLowerCase();
   return (
