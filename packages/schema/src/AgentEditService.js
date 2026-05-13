@@ -1585,6 +1585,7 @@ async function runAgentEdit(input, state) {
       sessionId,
       elapsedMs: agentEditNow() - validationStartedAt,
       passed: !validationMessage,
+      error: validationMessage || undefined,
     });
     if (validationMessage) {
       await updateSessionProgress(databaseUrl, state.session.id, "repairing");
@@ -1622,6 +1623,7 @@ async function runAgentEdit(input, state) {
         elapsedMs: agentEditNow() - revalidationStartedAt,
         passed: !validationMessage,
         afterRepair: true,
+        error: validationMessage || undefined,
       });
 
       if (validationMessage) {
@@ -1635,6 +1637,7 @@ async function runAgentEdit(input, state) {
           sessionId,
           elapsedMs: agentEditNow() - totalStartedAt,
           outcome: "validation_failed",
+          error: validationMessage,
         });
         return serverFailure(validationMessage, {
           summary: "Assistant output failed validation.",
@@ -1693,6 +1696,7 @@ async function runAgentEdit(input, state) {
           sessionId,
           elapsedMs: agentEditNow() - totalStartedAt,
           outcome: "audit_blocked",
+          error: securityDecision.message,
         });
         return serverFailure(securityDecision.message, {
           summary: "Assistant output failed security audit.",

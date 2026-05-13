@@ -2,11 +2,22 @@ function now() {
   return Date.now();
 }
 
+function composeMessage(event, fields) {
+  if (fields?.message) return String(fields.message);
+  const parts = [event];
+  if (fields?.pathname) parts.push(`pathname=${fields.pathname}`);
+  if (Number.isFinite(fields?.status)) parts.push(`status=${fields.status}`);
+  if (Number.isFinite(fields?.elapsedMs)) parts.push(`elapsedMs=${fields.elapsedMs}`);
+  if (Number.isFinite(fields?.errorCount)) parts.push(`errorCount=${fields.errorCount}`);
+  return parts.join(" ");
+}
+
 function log(level, event, fields = {}) {
   const payload = {
     event,
     service: "vibespace-graphql",
     timestamp: new Date().toISOString(),
+    message: composeMessage(event, fields),
     ...fields,
   };
   const line = JSON.stringify(payload);

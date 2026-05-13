@@ -13,6 +13,7 @@ import {
   validateProfilePatch,
 } from "../AgentEditService.js";
 import { summarizeProfileRisk } from "../ProfileRiskSummary.js";
+import { logAgentEditPhase } from "../AgentEditLog.js";
 import { validateGeneratedPatch } from "../AgentEditSafety.res.js";
 import {
   inspectSvgTrust,
@@ -582,5 +583,55 @@ describe("composeSecurityAuditPrompt", () => {
     });
 
     expect(prompt).toContain("(none");
+  });
+});
+
+describe("logAgentEditPhase", () => {
+  function captureInfo(fn) {
+    const lines = [];
+    const original = console.info;
+    console.info = (line) => lines.push(String(line));
+    try {
+      fn();
+    } finally {
+      console.info = original;
+    }
+    return lines.map((line) => JSON.parse(line));
+  }
+
+  it("synthesizes a message field with key fields for prod log surfaces", () => {
+    const [entry] = captureInfo(() =>
+      logAgentEditPhase("validation", {
+        sessionId: "abc",
+        elapsedMs: 16,
+        passed: false,
+        afterRepair: true,
+        error: "\"aria-label\" cannot be used on this element.",
+      }),
+    );
+
+    expect(entry.event).toBe("agent_edit.phase");
+    expect(entry.message).toContain("phase=validation");
+    expect(entry.message).toContain("elapsedMs=16");
+    expect(entry.message).toContain("passed=false");
+    expect(entry.message).toContain("afterRepair=true");
+    expect(entry.message).toContain("aria-label");
+    expect(entry.error).toBe("\"aria-label\" cannot be used on this element.");
+  });
+
+  it("truncates very long error messages in the message field but keeps the structured field intact", () => {
+    const longError = "x".repeat(400);
+    const [entry] = captureInfo(() =>
+      logAgentEditPhase("total", {
+        sessionId: "abc",
+        elapsedMs: 1000,
+        outcome: "validation_failed",
+        error: longError,
+      }),
+    );
+
+    expect(entry.message).toContain("...");
+    expect(entry.message.length).toBeLessThan(longError.length);
+    expect(entry.error).toBe(longError);
   });
 });
