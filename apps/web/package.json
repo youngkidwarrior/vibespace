@@ -19,7 +19,7 @@
     "reanalyze:reactive": "cd ../.. && yarn reanalyze:reactive",
     "reanalyze:benchmark": "cd ../.. && yarn reanalyze:benchmark",
     "reanalyze:mermaid": "cd ../.. && yarn reanalyze:mermaid",
-    "relay": "sh ../../scripts/relay-no-watchman.sh relay.config.json",
+    "relay": "node ../../scripts/relay-command.js",
     "relay:validate": "sh ../../scripts/relay-no-watchman.sh relay.config.json --validate",
     "relay:watch": "rescript-relay-compiler relay.config.json --watch",
     "router": "rescript-relay-router generate -scaffold-renderers",

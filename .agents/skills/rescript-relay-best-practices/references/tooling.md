@@ -30,23 +30,44 @@ yarn exec rescript-relay-cli debug
 yarn exec rescript-relay-cli format-all-graphql --ci
 yarn exec rescript-relay-cli remove-unused-fields --ci --verbose
 yarn exec rescript-relay-compiler relay.config.json --validate
-yarn exec rescript-relay-compiler tools --help
+yarn relay tools --help
 ```
 
 Use compiler tools for impact analysis:
 
 ```sh
-yarn exec rescript-relay-compiler tools find-schema-references User.name --with-snippet
-yarn exec rescript-relay-compiler tools fragment-dependents UserCard_user --transitive
-yarn exec rescript-relay-compiler tools print-operation ProfileRouteQuery
-yarn exec rescript-relay-compiler tools definition-audit --min-selection-lines 40
-yarn exec rescript-relay-compiler tools deprecated-usage
-yarn exec rescript-relay-compiler tools unused-fragments
-yarn exec rescript-relay-compiler tools fragment-spread-usage
-yarn exec rescript-relay-compiler tools unused-schema-members
+yarn relay tools find-references User.name
+yarn relay tools fragment-dependents UserCard_user --transitive
+yarn relay tools print-operation ProfileRouteQuery
+yarn relay tools deprecated-usage
+yarn relay tools unused-fragments
+yarn relay tools fragment-usage
+yarn relay tools schema-dce
+yarn relay tools executable-definitions --min-selection-lines 50
 ```
 
 Add `--json` when another tool or agent needs structured output.
+
+For component-boundary audits, start with:
+
+```sh
+yarn relay tools executable-definitions --min-selection-lines 50
+```
+
+Review every large fragment before editing. If a fragment is roughly 50-60+
+selection lines, check whether it is serving several UI components or states. If
+so, split it into smaller component-owned fragments and pass fragment refs
+through the UI tree instead of keeping one broad parent fragment.
+
+If the local workspace only exposes the raw compiler binary, use the current
+legacy aliases:
+
+```sh
+yarn workspace @vibespace/web exec rescript-relay-compiler tools find-schema-references User.name
+yarn workspace @vibespace/web exec rescript-relay-compiler tools fragment-spread-usage
+yarn workspace @vibespace/web exec rescript-relay-compiler tools unused-schema-members
+yarn workspace @vibespace/web exec rescript-relay-compiler tools definition-audit --min-selection-lines 50
+```
 
 ## Mutating Commands
 
@@ -57,13 +78,13 @@ yarn relay
 yarn exec rescript-relay-cli format-all-graphql
 yarn exec rescript-relay-cli format-single-graphql /absolute/path/to/File.res
 yarn exec rescript-relay-cli remove-unused-fields
-yarn exec rescript-relay-compiler tools rename-fragment OldFragment_user NewFragment_user
+yarn relay tools rename-fragment OldFragment_user NewFragment_user
 ```
 
 For fragment renames, always inspect first:
 
 ```sh
-yarn exec rescript-relay-compiler tools rename-fragment OldFragment_user NewFragment_user --dry-run
+yarn relay tools rename-fragment OldFragment_user NewFragment_user --dry-run
 ```
 
 `rename-fragment` updates fragment definitions and spread sites, but it does not
@@ -77,4 +98,3 @@ fragment-name alignment.
 3. For validation: `yarn relay:validate`.
 4. For type checking: `yarn rescript`.
 5. For larger refactors: run compiler `tools` before editing and again after.
-
