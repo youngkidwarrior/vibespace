@@ -175,6 +175,148 @@ let inputClass =
 let textareaClass =
   "min-h-24 w-full resize-y rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-base font-semibold leading-relaxed text-neutral-950 outline-none transition focus:border-neutral-500 focus:ring-4 focus:ring-neutral-200"
 
+type onboardingState = {
+  step: onboardingStep,
+  selectedMode: option<onboardingMode>,
+  imageDataUrl: option<string>,
+  answers: onboardingAnswers,
+  message: option<string>,
+  sendtagValidationInFlight: bool,
+  accountKeyCopyStatus: option<string>,
+  manualSessionToken: string,
+  manualSessionMessage: option<string>,
+  redeemedAccount: option<redeemedAccount>,
+  locallyRedeemedInviteId: option<string>,
+}
+
+type answerField =
+  | FavoriteSong
+  | Likes
+  | Dislikes
+  | VibeNote
+  | ProfileName
+  | Sendtag
+
+type onboardingAction =
+  | ModeSelected(onboardingMode)
+  | ImageSelected(string)
+  | ImageReadFailed(string)
+  | AnswerChanged(answerField, string)
+  | AccountKeyCopyStarted
+  | AccountKeyCopySucceeded
+  | AccountKeyCopyFailed
+  | ManualSessionTokenChanged(string)
+  | ManualSessionMessageSet(option<string>)
+  | RedeemStarted
+  | RedeemSucceeded({
+      account: redeemedAccount,
+      inviteId: string,
+      displayName: string,
+    })
+  | RedeemFailed(string)
+  | ContinueRequested
+  | BackToChooseVibe
+  | SendtagCheckStarted(string)
+  | SendtagCheckFailed(string)
+  | StarterGenerationStarted
+  | StarterGenerationQueued
+  | StarterGenerationFailed(string)
+
+let initialOnboardingState = initialRedeemedAccount => {
+  step: switch initialRedeemedAccount {
+  | Some(_) => ChooseVibe
+  | None => ConfirmInvite
+  },
+  selectedMode: None,
+  imageDataUrl: None,
+  answers: defaultAnswers,
+  message: None,
+  sendtagValidationInFlight: false,
+  accountKeyCopyStatus: None,
+  manualSessionToken: "",
+  manualSessionMessage: None,
+  redeemedAccount: initialRedeemedAccount,
+  locallyRedeemedInviteId: None,
+}
+
+let updateAnswer = (answers, field, value) =>
+  switch field {
+  | FavoriteSong => {...answers, favoriteSong: value}
+  | Likes => {...answers, likes: value}
+  | Dislikes => {...answers, dislikes: value}
+  | VibeNote => {...answers, vibeNote: value}
+  | ProfileName => {...answers, profileName: value}
+  | Sendtag => {...answers, sendtag: value}
+  }
+
+let onboardingReducer = (state, action) =>
+  switch action {
+  | ModeSelected(mode) => {...state, selectedMode: Some(mode), message: None}
+  | ImageSelected(dataUrl) => {...state, imageDataUrl: Some(dataUrl), message: None}
+  | ImageReadFailed(message) => {...state, message: Some(message)}
+  | AnswerChanged(field, value) => {...state, answers: state.answers->updateAnswer(field, value)}
+  | AccountKeyCopyStarted => {...state, accountKeyCopyStatus: Some("Copying...")}
+  | AccountKeyCopySucceeded => {...state, accountKeyCopyStatus: Some("Copied.")}
+  | AccountKeyCopyFailed => {
+      ...state,
+      accountKeyCopyStatus: Some("Copy failed. Copy the key manually."),
+    }
+  | ManualSessionTokenChanged(token) => {
+      ...state,
+      manualSessionToken: token,
+      manualSessionMessage: None,
+    }
+  | ManualSessionMessageSet(message) => {...state, manualSessionMessage: message}
+  | RedeemStarted => {...state, message: Some("Redeeming invite...")}
+  | RedeemSucceeded({account, inviteId, displayName}) => {
+      ...state,
+      redeemedAccount: Some(account),
+      locallyRedeemedInviteId: Some(inviteId),
+      answers: {...state.answers, profileName: displayName},
+      message: None,
+      step: ChooseVibe,
+    }
+  | RedeemFailed(message) => {...state, message: Some(message)}
+  | ContinueRequested =>
+    switch (state.selectedMode, state.imageDataUrl) {
+    | (Some(_), Some(_)) => {...state, message: None, step: Questions}
+    | (None, _) => {...state, message: Some("Choose people or nature first.")}
+    | (_, None) => {...state, message: Some("Upload a photo first.")}
+    }
+  | BackToChooseVibe => {...state, step: ChooseVibe}
+  | SendtagCheckStarted(normalizedSendtag) => {
+      ...state,
+      sendtagValidationInFlight: true,
+      message: Some(
+        normalizedSendtag == ""
+          ? "Designing your starter profile..."
+          : "Checking /" ++ normalizedSendtag ++ "...",
+      ),
+    }
+  | SendtagCheckFailed(message) => {
+      ...state,
+      sendtagValidationInFlight: false,
+      message: Some(message),
+    }
+  | StarterGenerationStarted => {
+      ...state,
+      sendtagValidationInFlight: false,
+      message: Some("Designing your starter profile..."),
+      step: Generating,
+    }
+  | StarterGenerationQueued => {
+      ...state,
+      message: Some("We are building your starter Vibespace in the background."),
+      step: Generating,
+    }
+  | StarterGenerationFailed(message) => {
+      ...state,
+      sendtagValidationInFlight: false,
+      message: Some(message),
+      step: Questions,
+    }
+  }
+
 @react.component
 let make = (~queryRef, ~code: string) => {
   let data = Query.usePreloaded(~queryRef)
@@ -182,8 +324,21 @@ let make = (~queryRef, ~code: string) => {
   let agentTracker = AgentEditTracker.use()
   let editorLink = Routes.Editor.Route.makeLink()
   let exploreLink = Routes.Explore.Route.makeLink()
-  let initialRedeemedAccount = switch (LocalViewerSession.load(), data.viewer, data.viewerProfile) {
-  | (Some(sessionToken), Some(_viewer), Some(profile)) =>
+  let inviteBelongsToViewer = switch data.inviteByCode {
+  | Some(invite) =>
+    switch (data.viewer, invite.invitee) {
+    | (Some(viewer), Some(invitee)) => viewer.id == invitee.id
+    | _ => false
+    }
+  | None => false
+  }
+  let initialRedeemedAccount = switch (
+    inviteBelongsToViewer,
+    LocalViewerSession.load(),
+    data.viewer,
+    data.viewerProfile,
+  ) {
+  | (true, Some(sessionToken), Some(_viewer), Some(profile)) =>
     Some({
       sessionToken,
       profileId: profile.id,
@@ -191,25 +346,21 @@ let make = (~queryRef, ~code: string) => {
     })
   | _ => None
   }
-  let initialStep = switch initialRedeemedAccount {
-  | Some(_) => ChooseVibe
-  | None => ConfirmInvite
-  }
-  let (step, setStep) = React.useState(() => initialStep)
-  let (selectedMode, setSelectedMode) = React.useState((): option<onboardingMode> => None)
-  let (imageDataUrl, setImageDataUrl) = React.useState((): option<string> => None)
-  let (answers, setAnswers) = React.useState(() => defaultAnswers)
-  let (message, setMessage) = React.useState((): option<string> => None)
-  let (sendtagValidationInFlight, setSendtagValidationInFlight) = React.useState(() => false)
-  let (accountKeyCopyStatus, setAccountKeyCopyStatus) = React.useState((): option<string> => None)
-  let (manualSessionToken, setManualSessionToken) = React.useState(() => "")
-  let (manualSessionMessage, setManualSessionMessage) = React.useState((): option<string> => None)
-  let (redeemedAccount, setRedeemedAccount) = React.useState((): option<redeemedAccount> =>
-    initialRedeemedAccount
+  let (state, dispatch) = React.useReducer(
+    onboardingReducer,
+    initialOnboardingState(initialRedeemedAccount),
   )
-  let (locallyRedeemedInviteId, setLocallyRedeemedInviteId) = React.useState((): option<string> =>
-    None
-  )
+  let step = state.step
+  let selectedMode = state.selectedMode
+  let imageDataUrl = state.imageDataUrl
+  let answers = state.answers
+  let message = state.message
+  let sendtagValidationInFlight = state.sendtagValidationInFlight
+  let accountKeyCopyStatus = state.accountKeyCopyStatus
+  let manualSessionToken = state.manualSessionToken
+  let manualSessionMessage = state.manualSessionMessage
+  let redeemedAccount = state.redeemedAccount
+  let locallyRedeemedInviteId = state.locallyRedeemedInviteId
   let (redeemInvite, redeemInviteInFlight) = ProfileVersionMutations.RedeemInviteMutation.use()
   let (submitAgentEdit, submitAgentEditInFlight) = ProfileVersionMutations.SubmitAgentEditMutation.use()
 
@@ -224,16 +375,16 @@ let make = (~queryRef, ~code: string) => {
     router.replace(editorLink)
   }
 
-  let updateAnswers = setter => setAnswers(current => setter(current))
+  let updateAnswer = (field, value) => dispatch(AnswerChanged(field, value))
 
   let copyAccountKey = token => {
-    setAccountKeyCopyStatus(_ => Some("Copying..."))
+    dispatch(AccountKeyCopyStarted)
     let run = async () => {
       try {
         await Clipboard.writeText(DomGlobal.navigator->Navigator.clipboard, token)
-        setAccountKeyCopyStatus(_ => Some("Copied."))
+        dispatch(AccountKeyCopySucceeded)
       } catch {
-      | _ => setAccountKeyCopyStatus(_ => Some("Copy failed. Copy the key manually."))
+      | _ => dispatch(AccountKeyCopyFailed)
       }
     }
     run()->Promise.ignore
@@ -242,10 +393,10 @@ let make = (~queryRef, ~code: string) => {
   let restoreManualSession = () => {
     let token = manualSessionToken->String.trim
     if token == "" {
-      setManualSessionMessage(_ => Some("Paste your account key first."))
+      dispatch(ManualSessionMessageSet(Some("Paste your account key first.")))
     } else {
       LocalViewerSession.save(token)
-      setManualSessionMessage(_ => Some("Account key saved. Opening your Vibespace..."))
+      dispatch(ManualSessionMessageSet(Some("Account key saved. Opening your Vibespace...")))
       openSavedSession()
     }
   }
@@ -257,13 +408,11 @@ let make = (~queryRef, ~code: string) => {
       try {
         let dataUrl = await readFirstImageFromEvent(event)
         switch dataUrl->Nullable.toOption {
-        | Some(value) =>
-          setImageDataUrl(_ => Some(value))
-          setMessage(_ => None)
-        | None => setMessage(_ => Some("Choose an image file to keep building your vibe."))
+        | Some(value) => dispatch(ImageSelected(value))
+        | None => dispatch(ImageReadFailed("Choose an image file to keep building your vibe."))
         }
       } catch {
-      | _ => setMessage(_ => Some("That image could not be read. Try a different photo."))
+      | _ => dispatch(ImageReadFailed("That image could not be read. Try a different photo."))
       }
     }
     run()->Promise.ignore
@@ -271,15 +420,15 @@ let make = (~queryRef, ~code: string) => {
 
   let confirmRedeem = () => {
     if !redeemInviteInFlight {
-      setMessage(_ => Some("Redeeming invite..."))
+      dispatch(RedeemStarted)
       redeemInvite(
         ~variables={input: {code, displayName: "New Vibespace"}},
         ~onCompleted=(response, errors) => {
           switch errors {
           | Some(errors) =>
             switch errors->Array.get(0) {
-            | Some(error) => setMessage(_ => Some(error.message))
-            | None => setMessage(_ => Some("Invite redemption failed."))
+            | Some(error) => dispatch(RedeemFailed(error.message))
+            | None => dispatch(RedeemFailed("Invite redemption failed."))
             }
           | None =>
             switch response.redeemInvite {
@@ -288,38 +437,29 @@ let make = (~queryRef, ~code: string) => {
               | Some(token) =>
                 LocalViewerSession.save(token)
                 copyAccountKey(token)
-                setRedeemedAccount(_ =>
-                  Some({
+                dispatch(RedeemSucceeded({
+                  account: {
                     sessionToken: token,
                     profileId: payload.profile.id,
                     profileSlug: payload.profile.slug,
-                  })
-                )
-                setLocallyRedeemedInviteId(_ => Some(payload.invite.id))
-                setAnswers(current => {...current, profileName: payload.user.displayName})
-                setMessage(_ => None)
-                setStep(_ => ChooseVibe)
+                  },
+                  inviteId: payload.invite.id,
+                  displayName: payload.user.displayName,
+                }))
               | None =>
-                setMessage(_ => Some("Profile was created, but the server did not return a session token."))
+                dispatch(RedeemFailed("Profile was created, but the server did not return a session token."))
               }
-            | MutationFailed({message}) => setMessage(_ => Some(message))
-            | UnselectedUnionMember(_) => setMessage(_ => Some("Invite redemption returned an unknown result."))
+            | MutationFailed({message}) => dispatch(RedeemFailed(message))
+            | UnselectedUnionMember(_) => dispatch(RedeemFailed("Invite redemption returned an unknown result."))
             }
           }
         },
-        ~onError=error => setMessage(_ => Some(error.message)),
+        ~onError=error => dispatch(RedeemFailed(error.message)),
       )->ignore
     }
   }
 
-  let startQuestions = () =>
-    switch (selectedMode, imageDataUrl) {
-    | (Some(_), Some(_)) =>
-      setMessage(_ => None)
-      setStep(_ => Questions)
-    | (None, _) => setMessage(_ => Some("Choose people or nature first."))
-    | (_, None) => setMessage(_ => Some("Upload a photo first."))
-    }
+  let startQuestions = () => dispatch(ContinueRequested)
 
   let generateStarterProfile = () => {
     switch (redeemedAccount, selectedMode, imageDataUrl) {
@@ -330,22 +470,14 @@ let make = (~queryRef, ~code: string) => {
       let run = async () => {
         let rawSendtag = answers.sendtag
         let normalizedSendtag = rawSendtag->normalizeSendtag
-        setSendtagValidationInFlight(_ => true)
-        if normalizedSendtag == "" {
-          setMessage(_ => Some("Designing your starter profile..."))
-        } else {
-          setMessage(_ => Some("Checking /" ++ normalizedSendtag ++ "..."))
-        }
+        dispatch(SendtagCheckStarted(normalizedSendtag))
 
         try {
           let sendtagValidation = await validateSendtag(rawSendtag)
           if !sendtagValidation.ok {
-            setSendtagValidationInFlight(_ => false)
-            setMessage(_ => Some(sendtagValidation.message))
+            dispatch(SendtagCheckFailed(sendtagValidation.message))
           } else {
-            setSendtagValidationInFlight(_ => false)
-            setMessage(_ => Some("Designing your starter profile..."))
-            setStep(_ => Generating)
+            dispatch(StarterGenerationStarted)
             submitAgentEdit(
               ~variables={
                 input: {
@@ -371,11 +503,9 @@ let make = (~queryRef, ~code: string) => {
                 | Some(errors) =>
                   switch errors->Array.get(0) {
                   | Some(error) =>
-                    setMessage(_ => Some(error.message))
-                    setStep(_ => Questions)
+                    dispatch(StarterGenerationFailed(error.message))
                   | None =>
-                    setMessage(_ => Some("Starter profile generation failed."))
-                    setStep(_ => Questions)
+                    dispatch(StarterGenerationFailed("Starter profile generation failed."))
                   }
                 | None =>
                   switch response.submitAgentEdit {
@@ -386,39 +516,30 @@ let make = (~queryRef, ~code: string) => {
                       inviteCode: code,
                     })
                     invalidateRelayStore()
-                    setMessage(_ =>
-                      Some("We are building your starter Vibespace in the background.")
-                    )
-                    setStep(_ => Generating)
+                    dispatch(StarterGenerationQueued)
                   | ProfileEditSessionMutationFailed({message}) =>
-                    setMessage(_ => Some(message))
-                    setStep(_ => Questions)
+                    dispatch(StarterGenerationFailed(message))
                   | UnselectedUnionMember(_) =>
-                    setMessage(_ => Some("Starter profile generation returned an unknown result."))
-                    setStep(_ => Questions)
+                    dispatch(StarterGenerationFailed("Starter profile generation returned an unknown result."))
                   }
                 }
               },
               ~onError=error => {
-                setMessage(_ => Some(error.message))
-                setStep(_ => Questions)
+                dispatch(StarterGenerationFailed(error.message))
               },
             )->ignore
           }
         } catch {
         | _ =>
-          setSendtagValidationInFlight(_ => false)
-          setMessage(_ =>
-            Some("We could not check that Sendtag. Check the tag or leave it blank.")
-          )
+          dispatch(SendtagCheckFailed("We could not check that Sendtag. Check the tag or leave it blank."))
         }
       }
       run()->Promise.ignore
       }
-    | (None, _, _) => setMessage(_ => Some("Redeem the invite before generating a starter profile."))
-    | (_, None, _) => setMessage(_ => Some("Choose people or nature first."))
-    | (_, _, None) => setMessage(_ => Some("Upload a photo first."))
-    | (_, _, _) => setMessage(_ => Some("Give your profile a name first."))
+    | (None, _, _) => dispatch(StarterGenerationFailed("Redeem the invite before generating a starter profile."))
+    | (_, None, _) => dispatch(StarterGenerationFailed("Choose people or nature first."))
+    | (_, _, None) => dispatch(StarterGenerationFailed("Upload a photo first."))
+    | (_, _, _) => dispatch(StarterGenerationFailed("Give your profile a name first."))
     }
   }
 
@@ -505,8 +626,7 @@ let make = (~queryRef, ~code: string) => {
           value=manualSessionToken
           placeholder="Paste account key"
           onChange={event => {
-            setManualSessionToken(_ => BrowserBridge.eventTargetValue(event))
-            setManualSessionMessage(_ => None)
+            dispatch(ManualSessionTokenChanged(BrowserBridge.eventTargetValue(event)))
           }}
         />
         <div className="flex justify-end">
@@ -548,8 +668,7 @@ let make = (~queryRef, ~code: string) => {
         className=polaroidClass
         type_="button"
         onClick={_ => {
-          setSelectedMode(_ => Some(mode))
-          setMessage(_ => None)
+          dispatch(ModeSelected(mode))
         }}>
         <div className="grid aspect-[4/5] place-items-center overflow-hidden rounded-[1.35rem] bg-neutral-100">
           {switch (imageVisible, imageDataUrl) {
@@ -662,7 +781,7 @@ let make = (~queryRef, ~code: string) => {
             className=inputClass
             value=answers.favoriteSong
             placeholder="The song that says it all"
-            onChange={event => updateAnswers(current => {...current, favoriteSong: BrowserBridge.eventTargetValue(event)})}
+            onChange={event => updateAnswer(FavoriteSong, BrowserBridge.eventTargetValue(event))}
           />
         </label>
         <label className="grid gap-1.5 text-sm font-black text-neutral-700">
@@ -671,7 +790,7 @@ let make = (~queryRef, ~code: string) => {
             className=textareaClass
             value=answers.likes
             placeholder="People, places, styles, colors, moods"
-            onChange={event => updateAnswers(current => {...current, likes: BrowserBridge.eventTargetValue(event)})}
+            onChange={event => updateAnswer(Likes, BrowserBridge.eventTargetValue(event))}
           />
         </label>
         <label className="grid gap-1.5 text-sm font-black text-neutral-700">
@@ -680,7 +799,7 @@ let make = (~queryRef, ~code: string) => {
             className=textareaClass
             value=answers.dislikes
             placeholder="Anything your profile should avoid"
-            onChange={event => updateAnswers(current => {...current, dislikes: BrowserBridge.eventTargetValue(event)})}
+            onChange={event => updateAnswer(Dislikes, BrowserBridge.eventTargetValue(event))}
           />
         </label>
         <label className="grid gap-1.5 text-sm font-black text-neutral-700">
@@ -689,7 +808,7 @@ let make = (~queryRef, ~code: string) => {
             className=textareaClass
             value=answers.vibeNote
             placeholder="A mood, a memory, a weird detail, a whole direction"
-            onChange={event => updateAnswers(current => {...current, vibeNote: BrowserBridge.eventTargetValue(event)})}
+            onChange={event => updateAnswer(VibeNote, BrowserBridge.eventTargetValue(event))}
           />
         </label>
         <label className="grid gap-1.5 text-sm font-black text-neutral-700">
@@ -698,7 +817,7 @@ let make = (~queryRef, ~code: string) => {
             className=inputClass
             value=answers.profileName
             placeholder="What should this profile be called?"
-            onChange={event => updateAnswers(current => {...current, profileName: BrowserBridge.eventTargetValue(event)})}
+            onChange={event => updateAnswer(ProfileName, BrowserBridge.eventTargetValue(event))}
           />
         </label>
         <label className="grid gap-1.5 text-sm font-black text-neutral-700">
@@ -707,7 +826,7 @@ let make = (~queryRef, ~code: string) => {
             className=inputClass
             value=answers.sendtag
             placeholder="Optional, like Blusy19 or /Blusy19"
-            onChange={event => updateAnswers(current => {...current, sendtag: BrowserBridge.eventTargetValue(event)})}
+            onChange={event => updateAnswer(Sendtag, BrowserBridge.eventTargetValue(event))}
           />
         </label>
         {message->Option.mapOr(React.null, text =>
@@ -717,7 +836,7 @@ let make = (~queryRef, ~code: string) => {
         )}
         <div className="flex flex-wrap justify-end gap-2.5">
           {renderOpenProfileButton()}
-          <Button variant=Outline type_="button" onClick={_ => setStep(_ => ChooseVibe)}>
+          <Button variant=Outline type_="button" onClick={_ => dispatch(BackToChooseVibe)}>
             {React.string("Back")}
           </Button>
           <Button

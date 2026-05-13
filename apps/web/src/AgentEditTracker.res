@@ -72,6 +72,19 @@ type toast = {
   actionLink: string,
 }
 
+type trackerState = {
+  jobs: array<trackedJob>,
+  toasts: array<toast>,
+}
+
+type trackerAction =
+  | TrackPromptDraft(promptDraftRequest)
+  | TrackSourceLane(sourceLaneRequest)
+  | TrackOnboardingStarter(onboardingStarterRequest)
+  | JobFinished(string)
+  | ToastQueued(toast)
+  | ToastDismissed(string)
+
 type context = {
   trackPromptDraft: promptDraftRequest => unit,
   trackSourceLane: sourceLaneRequest => unit,
@@ -141,10 +154,51 @@ let upsertJob = (jobs, nextJob) => [
   ...jobs->Array.filter(job => job->jobKey != nextJob->jobKey),
 ]
 
-let toastId = (~kind, ~sessionId) => kind ++ ":" ++ sessionId
+let trackerReducer = (state, action) =>
+  switch action {
+  | TrackPromptDraft(request) =>
+    {
+      ...state,
+      jobs: state.jobs->upsertJob(PromptDraft({
+        sessionId: request.sessionId,
+        draftId: request.draftId,
+        onSession: request.onSession,
+        onProgress: request.onProgress,
+        onApplied: request.onApplied,
+        onFailed: request.onFailed,
+      })),
+    }
+  | TrackSourceLane(request) =>
+    {
+      ...state,
+      jobs: state.jobs->upsertJob(SourceLane({
+        sessionId: request.sessionId,
+        onSession: request.onSession,
+        onApplied: request.onApplied,
+        onFailed: request.onFailed,
+      })),
+    }
+  | TrackOnboardingStarter(request) =>
+    {
+      ...state,
+      jobs: state.jobs->upsertJob(OnboardingStarter({
+        sessionId: request.sessionId,
+        profileSlug: request.profileSlug,
+        inviteCode: request.inviteCode,
+      })),
+    }
+  | JobFinished(key) => {...state, jobs: state.jobs->Array.filter(job => job->jobKey != key)}
+  | ToastQueued(toast) => {
+      ...state,
+      toasts: [toast, ...state.toasts->Array.filter(item => item.id != toast.id)],
+    }
+  | ToastDismissed(id) => {
+      ...state,
+      toasts: state.toasts->Array.filter(item => item.id != id),
+    }
+  }
 
-let enqueueToast = (~setToasts, toast) =>
-  setToasts(current => [toast, ...current->Array.filter(item => item.id != toast.id)])
+let toastId = (~kind, ~sessionId) => kind ++ ":" ++ sessionId
 
 let invalidateRelayStore = () =>
   RescriptRelay.commitLocalUpdate(
@@ -192,7 +246,7 @@ let renderToast = (~toast, ~onDismiss) => {
   </aside>
 }
 
-let renderPoller = (~job, ~setJobs, ~setToasts) => {
+let renderPoller = (~job, ~dispatch) => {
   let key = job->jobKey
   <ProfileEditSessionPoller
     key
@@ -224,16 +278,15 @@ let renderPoller = (~job, ~setJobs, ~setToasts) => {
       | SourceLane(job) => job.onApplied(session, version)
       | OnboardingStarter(job) =>
         invalidateRelayStore()
-        enqueueToast(
-          ~setToasts,
-          {
+        dispatch(
+          ToastQueued({
             id: toastId(~kind="ready", ~sessionId=job.sessionId),
             kind: Ready,
             title: "Your starter Vibespace is ready.",
             message: "Open it when you are ready to edit or share it.",
             actionLabel: "Open profile",
             actionLink: Routes.Profile.Route.makeLink(~handle=job.profileSlug),
-          },
+          }),
         )
       }
     }}
@@ -244,56 +297,29 @@ let renderPoller = (~job, ~setJobs, ~setToasts) => {
         job.onFailed(message)
       | SourceLane(job) => job.onFailed(message)
       | OnboardingStarter(job) =>
-        enqueueToast(
-          ~setToasts,
-          {
+        dispatch(
+          ToastQueued({
             id: toastId(~kind="error", ~sessionId=job.sessionId),
             kind: Error,
             title: "Starter profile failed.",
             message,
             actionLabel: "Back to onboarding",
             actionLink: Routes.Invite.Route.makeLink(~code=job.inviteCode),
-          },
+          }),
         )
       }
     }
-    onFinished={() => setJobs(current => current->Array.filter(job => job->jobKey != key))}
+    onFinished={() => dispatch(JobFinished(key))}
   />
 }
 
 module Host = {
   @react.component
   let make = (~dispatchRef: React.ref<context>) => {
-    let (jobs, setJobs) = React.useState((): array<trackedJob> => [])
-    let (toasts, setToasts) = React.useState((): array<toast> => [])
-    let trackPromptDraft = (request: promptDraftRequest) => {
-      let nextJob = PromptDraft({
-        sessionId: request.sessionId,
-        draftId: request.draftId,
-        onSession: request.onSession,
-        onProgress: request.onProgress,
-        onApplied: request.onApplied,
-        onFailed: request.onFailed,
-      })
-      setJobs(current => current->upsertJob(nextJob))
-    }
-    let trackSourceLane = (request: sourceLaneRequest) => {
-      let nextJob = SourceLane({
-        sessionId: request.sessionId,
-        onSession: request.onSession,
-        onApplied: request.onApplied,
-        onFailed: request.onFailed,
-      })
-      setJobs(current => current->upsertJob(nextJob))
-    }
-    let trackOnboardingStarter = (request: onboardingStarterRequest) => {
-      let nextJob = OnboardingStarter({
-        sessionId: request.sessionId,
-        profileSlug: request.profileSlug,
-        inviteCode: request.inviteCode,
-      })
-      setJobs(current => current->upsertJob(nextJob))
-    }
+    let (state, dispatch) = React.useReducer(trackerReducer, {jobs: [], toasts: []})
+    let trackPromptDraft = request => dispatch(TrackPromptDraft(request))
+    let trackSourceLane = request => dispatch(TrackSourceLane(request))
+    let trackOnboardingStarter = request => dispatch(TrackOnboardingStarter(request))
 
     React.useEffect1(() => {
       dispatchRef.current = {trackPromptDraft, trackSourceLane, trackOnboardingStarter}
@@ -303,14 +329,14 @@ module Host = {
     }, ["agent-edit-tracker-host"])
 
     <>
-      {jobs->Array.map(job => renderPoller(~job, ~setJobs, ~setToasts))->React.array}
-      {toasts->Array.length > 0
+      {state.jobs->Array.map(job => renderPoller(~job, ~dispatch))->React.array}
+      {state.toasts->Array.length > 0
         ? <div className="pointer-events-none fixed bottom-4 right-4 z-50 grid gap-3 max-md:bottom-3 max-md:right-3">
-            {toasts
+            {state.toasts
             ->Array.map(toast =>
               renderToast(
                 ~toast,
-                ~onDismiss=id => setToasts(current => current->Array.filter(item => item.id != id)),
+                ~onDismiss=id => dispatch(ToastDismissed(id)),
               )
             )
             ->React.array}
