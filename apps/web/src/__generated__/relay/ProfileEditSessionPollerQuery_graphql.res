@@ -27,6 +27,10 @@ module Types = {
   and response_profileEditSessionById = {
     createdAt: string,
     error: option<string>,
+    failedCss: option<string>,
+    failedHtml: option<string>,
+    failedValidationMessage: option<string>,
+    failedValidationSpanJson: option<string>,
     @live id: string,
     progressPhase: RelaySchemaAssets_graphql.enum_EditProgressPhase,
     prompt: string,
@@ -266,6 +270,34 @@ v4 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
+        "name": "failedHtml",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "failedCss",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "failedValidationMessage",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "failedValidationSpanJson",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
         "name": "resultVersionId",
         "storageKey": null
       },
@@ -393,12 +425,12 @@ return {
     "selections": (v4/*: any*/)
   },
   "params": {
-    "cacheID": "a584644f3ad320454df52a3a86ab962e",
+    "cacheID": "081a4521cb321c6dc79c80e29eb4752c",
     "id": null,
     "metadata": {},
     "name": "ProfileEditSessionPollerQuery",
     "operationKind": "query",
-    "text": "query ProfileEditSessionPollerQuery(\n  $id: ID!\n) {\n  profileEditSessionById(id: $id) {\n    id\n    prompt\n    status\n    progressPhase\n    summary\n    warnings\n    error\n    resultVersionId\n    selectionSnapshot {\n      id\n      label\n    }\n    resultVersion {\n      id\n      revisionNumber\n      html\n      css\n      source\n      summary\n      validationStatus\n      validationErrors\n      createdBy {\n        id\n        displayName\n      }\n      createdAt\n    }\n    createdAt\n    updatedAt\n  }\n}\n"
+    "text": "query ProfileEditSessionPollerQuery(\n  $id: ID!\n) {\n  profileEditSessionById(id: $id) {\n    id\n    prompt\n    status\n    progressPhase\n    summary\n    warnings\n    error\n    failedHtml\n    failedCss\n    failedValidationMessage\n    failedValidationSpanJson\n    resultVersionId\n    selectionSnapshot {\n      id\n      label\n    }\n    resultVersion {\n      id\n      revisionNumber\n      html\n      css\n      source\n      summary\n      validationStatus\n      validationErrors\n      createdBy {\n        id\n        displayName\n      }\n      createdAt\n    }\n    createdAt\n    updatedAt\n  }\n}\n"
   }
 };
 })() `)
