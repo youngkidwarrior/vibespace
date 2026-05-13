@@ -4,6 +4,7 @@ import {
   auditModelCandidates,
   composeSecurityAuditPrompt,
   repairGeneratedCss,
+  repairGeneratedHtml,
   resolveWebContextForPrompt,
   securityAuditDecision,
   shouldPersistSendtag,
@@ -58,6 +59,32 @@ describe("AgentEditService Sendtag persistence", () => {
   it("persists explicit string Sendtag inputs", () => {
     expect(shouldPersistSendtag({ sendtag: "Blusy19" })).toBe(true);
     expect(shouldPersistSendtag({ sendtag: "" })).toBe(true);
+  });
+});
+
+describe("AgentEditService generated HTML repair", () => {
+  it("strips aria-label from elements where the validator would reject it", () => {
+    const html = [
+      "<main data-vibespace-id=\"profile-root\">",
+      "<section class=\"profile-rest\" aria-label=\"Profile content\">",
+      "<div class=\"arches-svg\" role=\"img\" aria-label=\"Golden arches\"></div>",
+      "<button aria-label=\"Play\">play</button>",
+      "<p aria-label=\"intro copy\">hello</p>",
+      "</section>",
+      "</main>",
+    ].join("");
+
+    const repaired = repairGeneratedHtml(html);
+
+    expect(repaired).not.toMatch(/<section[^>]*aria-label/i);
+    expect(repaired).not.toMatch(/<p[^>]*aria-label/i);
+    expect(repaired).toMatch(/<div class="arches-svg" role="img" aria-label="Golden arches">/);
+    expect(repaired).toMatch(/<button aria-label="Play">/);
+  });
+
+  it("returns the original string when no aria-label is present", () => {
+    const html = "<main><section class=\"x\"></section></main>";
+    expect(repairGeneratedHtml(html)).toBe(html);
   });
 });
 

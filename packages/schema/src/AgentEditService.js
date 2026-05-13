@@ -13,6 +13,8 @@ import {
   validateGeneratedPatch,
 } from "./AgentEditSafety.res.js";
 import {
+  ariaLabelAllowedRoles,
+  ariaLabelAllowedTags,
   markKnownInlineSvg,
   trustedCapabilityPlaceholdersFromHtml,
   validateGeneratedProfileDocument,
@@ -973,6 +975,36 @@ function withGeneratedCssRepairs(patch) {
   return css === patch?.css ? patch : { ...patch, css };
 }
 
+const ariaLabelAttributePattern = /\s+aria-label\s*=\s*(?:"[^"]*"|'[^']*')/gi;
+const ariaLabelTagScanPattern = /<([A-Za-z][\w:-]*)\b([^>]*)>/g;
+const ariaLabelRoleValuePattern = /\brole\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
+
+export function repairGeneratedHtml(html) {
+  const source = String(html || "");
+  if (!/\baria-label\s*=/i.test(source)) return source;
+
+  return source.replace(ariaLabelTagScanPattern, (match, tagName, attrs) => {
+    if (!/\baria-label\s*=/i.test(attrs)) return match;
+    if (ariaLabelAllowedTags.has(tagName.toLowerCase())) return match;
+
+    const roleMatch = attrs.match(ariaLabelRoleValuePattern);
+    const role = ((roleMatch && (roleMatch[1] || roleMatch[2])) || "").trim().toLowerCase();
+    if (role && ariaLabelAllowedRoles.has(role)) return match;
+
+    const stripped = attrs.replace(ariaLabelAttributePattern, "");
+    return `<${tagName}${stripped}>`;
+  });
+}
+
+function withGeneratedHtmlRepairs(patch) {
+  const html = repairGeneratedHtml(patch?.html || "");
+  return html === patch?.html ? patch : { ...patch, html };
+}
+
+function withGeneratedRepairs(patch) {
+  return withGeneratedHtmlRepairs(withGeneratedCssRepairs(patch));
+}
+
 export async function validateProfilePatch(patch, { currentHtml, webContext }) {
   const html = String(patch?.html || "");
   const css = String(patch?.css || "");
@@ -1544,7 +1576,7 @@ async function runAgentEdit(input, state) {
     await updateSessionProgress(databaseUrl, state.session.id, "validating");
     currentPhase = "validating";
     const validationStartedAt = agentEditNow();
-    let patch = withGeneratedCssRepairs(providerResult.patch);
+    let patch = withGeneratedRepairs(providerResult.patch);
     let validationMessage = await validateProfilePatch(patch, {
       currentHtml: state.currentVersion.html,
       webContext,
@@ -1580,7 +1612,7 @@ async function runAgentEdit(input, state) {
       await updateSessionProgress(databaseUrl, state.session.id, "validating");
       currentPhase = "validating";
       const revalidationStartedAt = agentEditNow();
-      patch = withGeneratedCssRepairs(repairResult.patch);
+      patch = withGeneratedRepairs(repairResult.patch);
       validationMessage = await validateProfilePatch(patch, {
         currentHtml: state.currentVersion.html,
         webContext,

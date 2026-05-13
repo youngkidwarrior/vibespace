@@ -4,7 +4,7 @@ import { transform } from "lightningcss";
 const maxProfileDocumentLength = 200000;
 const fullDocumentFragmentPattern = /(?:<!doctype\b|<\/?(?:html|head|body)\b)/i;
 
-const ariaLabelAllowedTags = new Set([
+export const ariaLabelAllowedTags = new Set([
   "a",
   "area",
   "button",
@@ -15,7 +15,7 @@ const ariaLabelAllowedTags = new Set([
   "textarea",
 ]);
 
-const ariaLabelAllowedRoles = new Set([
+export const ariaLabelAllowedRoles = new Set([
   "button",
   "checkbox",
   "combobox",
