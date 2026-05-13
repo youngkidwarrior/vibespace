@@ -4,7 +4,11 @@ import {
   emptyWebContext,
   sanitizeWebContext,
 } from "@vibespace/generative-ui";
-import { validateProfileDocument } from "./ProfileHtmlValidation.js";
+import {
+  checkProfileCurrentVersionUnchanged,
+  validateGeneratedPatch,
+} from "./AgentEditSafety.res.js";
+import { markKnownInlineSvg, validateGeneratedProfileDocument } from "./ProfileHtmlValidation.js";
 import { normalizeSendtag } from "./SendProfileLookup.js";
 
 const defaultFastModel = "gpt-5.4-nano";
@@ -21,7 +25,8 @@ const profileDocumentPatchFormat = {
     properties: {
       html: {
         type: "string",
-        description: "Complete replacement HTML for the profile body. Plain HTML only; no scripts.",
+        description:
+          "Complete replacement HTML for the profile body. Standard HTML plus the safe inline SVG subset only; no scripts.",
       },
       css: {
         type: "string",
@@ -662,6 +667,46 @@ function trustedSourcesFromWebContext(webContext, kind) {
     : [];
 }
 
+function trustedCapabilityMetadataForSource(webContext, kind, source) {
+  const items = kind === "trusted_frame" ? webContext?.safeFrames : webContext?.safeImages;
+  const field = kind === "trusted_frame" ? "frameUrl" : "imageUrl";
+  const item = Array.isArray(items)
+    ? items.find((candidate) => String(candidate?.[field] || "").trim() === source)
+    : undefined;
+
+  let origin = "";
+  try {
+    origin = new URL(source).origin;
+  } catch {
+    origin = "";
+  }
+
+  return {
+    origin: String(item?.origin || origin),
+    canonicalUrl: String(item?.canonicalUrl || ""),
+    metadataJson: JSON.stringify(item || {}),
+  };
+}
+
+function trustedCapabilityRowsFromHtml(html, webContext) {
+  const rows = [];
+  for (const source of Array.from(new Set(trustedSourcesFromHtml(html, "frame")))) {
+    rows.push({
+      kind: "trusted_frame",
+      source,
+      ...trustedCapabilityMetadataForSource(webContext, "trusted_frame", source),
+    });
+  }
+  for (const source of Array.from(new Set(trustedSourcesFromHtml(html, "image")))) {
+    rows.push({
+      kind: "trusted_image",
+      source,
+      ...trustedCapabilityMetadataForSource(webContext, "trusted_image", source),
+    });
+  }
+  return rows.filter((row) => row.origin && row.source);
+}
+
 function withGeneratedCssRepairs(patch) {
   const css = repairGeneratedCss(patch?.css || "");
   return css === patch?.css ? patch : { ...patch, css };
@@ -671,7 +716,7 @@ async function validateProfilePatch(patch, { currentHtml, webContext }) {
   const html = String(patch?.html || "");
   const css = String(patch?.css || "");
 
-  const validationMessage = await validateProfileDocument(html, css);
+  const validationMessage = await validateGeneratedProfileDocument(html, css);
   if (validationMessage) {
     return validationMessage;
   }
@@ -876,7 +921,23 @@ async function updateSessionProgress(databaseUrl, sessionId, progressPhase) {
   );
 }
 
-async function persistAppliedPatch(databaseUrl, input, state, patch, providerConversationId, model) {
+export function assertProfileCurrentVersionUnchanged(profile, state) {
+  const result = checkProfileCurrentVersionUnchanged(profile, state);
+
+  if (!result.ok) {
+    throw new Error(result.message);
+  }
+}
+
+function validatedGeneratedPatch(patch, validationMessage) {
+  const result = validateGeneratedPatch(patch, validationMessage || "");
+  if (!result.ok) {
+    throw new Error(result.message);
+  }
+  return { ...result.patch, html: markKnownInlineSvg(result.patch.html) };
+}
+
+async function persistAppliedPatch(databaseUrl, input, state, patch, providerConversationId, model, webContext) {
   return await withClient(databaseUrl, async (client) => {
     await client.query("BEGIN");
     try {
@@ -896,6 +957,7 @@ async function persistAppliedPatch(databaseUrl, input, state, patch, providerCon
       if (!profile) {
         throw new Error("Profile was not found while applying the assistant edit.");
       }
+      assertProfileCurrentVersionUnchanged(profile, state);
 
       const version = await queryOne(
         client,
@@ -963,6 +1025,31 @@ async function persistAppliedPatch(databaseUrl, input, state, patch, providerCon
       );
       if (!version) {
         throw new Error("Assistant edit did not create a profile version.");
+      }
+
+      for (const capability of trustedCapabilityRowsFromHtml(patch.html, webContext)) {
+        await client.query(
+          `
+            INSERT INTO vibespace.trusted_capability_references (
+              profile_version_id,
+              kind,
+              origin,
+              source,
+              canonical_url,
+              metadata_json,
+              validation_status
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, 'valid')
+          `,
+          [
+            version.id,
+            capability.kind,
+            capability.origin,
+            capability.source,
+            capability.canonicalUrl,
+            capability.metadataJson,
+          ],
+        );
       }
 
       const warnings = warningArray(patch.warnings);
@@ -1225,19 +1312,22 @@ async function runAgentEdit(input, state) {
       }
     }
 
+    const validatedPatch = validatedGeneratedPatch(patch, validationMessage);
+
     await updateSessionProgress(databaseUrl, state.session.id, "applying");
     const persisted = await persistAppliedPatch(
       databaseUrl,
       { ...input, prompt },
       state,
-      patch,
+      validatedPatch,
       providerConversationId,
       model,
+      webContext,
     );
 
     return {
       ok: true,
-      summary: patch.summary,
+      summary: validatedPatch.summary,
       warnings: persisted.warnings,
       validationErrors: [],
       error: undefined,

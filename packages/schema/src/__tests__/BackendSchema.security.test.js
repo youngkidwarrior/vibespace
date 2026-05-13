@@ -111,6 +111,22 @@ describe("BackendSchema profile write authorization", () => {
     expect(result._0.message).toContain("profile owner");
   });
 
+  it("rejects manual saves with SVG before persistence", async () => {
+    const result = await BackendSchema.saveManualProfileVersion(
+      undefined,
+      {
+        profileId: BackendSchema.fixtureProfileId,
+        html: validHtml.replace("</section>", `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /></svg></section>`),
+        css: validCss,
+        summary: "manual svg save",
+      },
+      dbContext(BackendSchema.fixtureViewerId),
+    );
+
+    expect(result.TAG).toBe("SaveManualProfileVersionFailed");
+    expect(result._0.message).toContain("Manual profile saves cannot include SVG");
+  });
+
   it("rejects restores from non-owners before persistence", async () => {
     const result = await BackendSchema.restoreProfileVersion(
       undefined,
