@@ -46,3 +46,8 @@ test-results/
 tmp/
 temp/
 .cache/
+
+# Local Claude Code config: permissions / sandbox / per-machine state.
+# .claude/skills/ IS tracked - it backs the .agents/skills symlink.
+.claude/settings.local.json
+.claude/.agents/

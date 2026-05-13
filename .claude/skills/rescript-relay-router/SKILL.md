@@ -18,11 +18,14 @@ Before editing, inspect:
 - `src/routes/__generated__`: generated router modules.
 - `vite.config.js`: `rescriptRelayVitePlugin()` setup.
 
-Read `references/rescript-relay-router-readme.md` for the route JSON,
-renderer, preload, and link APIs. Check
-`references/rescript-relay-router-changelog.md` before version-sensitive
-changes. Read `references/prefetch-preload-patterns.md` when route prefetching,
-preloading, or programmatic navigation behavior changes.
+### References (on-demand)
+
+Detailed references are kept out of the skill load path at:
+`/Users/vic/Documents/vibespace/references/rescript-relay-router/`
+
+Read a file from there only when you have already engaged this skill and need
+that specific topic (route JSON / renderer / preload / link APIs, version
+changelog, or prefetch-preload patterns). Do not auto-load.
 
 ## Vibespace Defaults
 

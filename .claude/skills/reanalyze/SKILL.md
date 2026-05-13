@@ -35,18 +35,13 @@ Before changing tooling or acting on findings, inspect the active repo shape:
 - Do not use `-write` unless the user explicitly asks for source mutation and
   the output has been reviewed first.
 
-## Reference Map
+## References (on-demand)
 
-Load only the focused reference needed:
+Detailed references are kept out of the skill load path at:
+`/Users/vic/Documents/vibespace/references/reanalyze/`
 
-- `references/workflow.md`: Vibespace scripts, Tilt server flow, root vs
-  package-local checks, and warning budgets.
-- `references/cli.md`: Reanalyze flags, CMT-directory mode, filtering, JSON,
-  diagnostics, and server delegation.
-- `references/annotations.md`: `@dead`, `@live`, `@throws`,
-  `@doesNotThrow`, and `@progress`.
-- `references/review-policy.md`: triage buckets, cleanup policy, and
-  false-positive handling.
+Read a file from there only when you have already engaged this skill and need
+that specific topic. Do not auto-load.
 
 ## Default Validation
 

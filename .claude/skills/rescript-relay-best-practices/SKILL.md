@@ -20,11 +20,13 @@ Before editing, inspect the active project shape:
 - `src/__generated__/relay`: generated Relay artifacts.
 - The component, route, or package that owns the UI data dependency.
 
-Read references only as needed:
+### References (on-demand)
 
-- `references/tooling.md`: command guide and CLI safety rules.
-- `references/rescript-relay-cli.md`: upstream CLI documentation.
-- `references/patterns.md`: local best-practice notes and TODOs.
+Detailed references are kept out of the skill load path at:
+`/Users/vic/Documents/vibespace/references/rescript-relay-best-practices/`
+
+Read a file from there only when you have already engaged this skill and need
+that specific topic. Do not auto-load.
 
 ## Working Rules
 
@@ -60,6 +62,6 @@ Read references only as needed:
 
 1. Inspect the existing fragment/query ownership.
 2. Make the smallest `%relay(...)` source change that matches the UI need.
-3. Run the relevant generator or validator from `references/tooling.md`.
+3. Run the relevant generator or validator (see on-demand reference at `/Users/vic/Documents/vibespace/references/rescript-relay-best-practices/tooling.md`).
 4. Compile ReScript.
 5. Review generated artifacts and source diffs together.
