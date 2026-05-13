@@ -105,6 +105,22 @@ describe("AgentEditService generated CSS repair", () => {
     expect(repaired).toContain("/*===== Added player styling =====*/");
     await expect(validateCssSource(repaired)).resolves.toBe("");
   });
+
+  it("rejects CSS that targets body so the iframe scroll setup stays intact", async () => {
+    await expect(validateCssSource("body { background: red; }")).resolves.toContain(
+      "cannot target <body>",
+    );
+    await expect(validateCssSource("html, body { height: 50vh; }")).resolves.toContain(
+      "cannot target",
+    );
+    await expect(validateCssSource("body .profile-card { color: red; }")).resolves.toContain(
+      "cannot target <body>",
+    );
+  });
+
+  it("still allows .profile-page rules", async () => {
+    await expect(validateCssSource(".profile-page { background: red; }")).resolves.toBe("");
+  });
 });
 
 describe("AgentEditService web context resolution", () => {
