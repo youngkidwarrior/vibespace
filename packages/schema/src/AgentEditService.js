@@ -18,12 +18,15 @@ import {
   validateGeneratedProfileDocument,
 } from "./ProfileHtmlValidation.js";
 import { normalizeSendtag } from "./SendProfileLookup.js";
+import { summarizeProfileRisk } from "./ProfileRiskSummary.js";
+import { logAgentEditPhase, now as agentEditNow } from "./AgentEditLog.js";
 
 const defaultFastModel = "gpt-5.4-nano";
 const defaultReasoningModel = "gpt-5.5";
 const defaultAuditModel = "gpt-5.1-codex-mini";
 const maxFailedPatchSnapshotLength = 200000;
 const minSecurityAuditConfidence = 0.85;
+const minAllowedSecurityAuditConfidence = 0.5;
 
 const profileDocumentPatchFormat = {
   type: "json_schema",
@@ -707,10 +710,11 @@ function normalizeProfileSecurityAudit(value) {
 
 export function securityAuditDecision(audit) {
   const result = normalizeProfileSecurityAudit(audit);
-  const ok =
-    result.allow === true &&
-    result.confidence >= minSecurityAuditConfidence &&
-    (result.risk === "none" || result.risk === "low");
+  const allowedRisk = result.risk === "none" || result.risk === "low";
+  const confidenceThreshold = result.allow === true && allowedRisk
+    ? minAllowedSecurityAuditConfidence
+    : minSecurityAuditConfidence;
+  const ok = result.allow === true && result.confidence >= confidenceThreshold && allowedRisk;
 
   return {
     ok,
@@ -721,21 +725,42 @@ export function securityAuditDecision(audit) {
   };
 }
 
-function composeSecurityAuditPrompt(patch) {
+export function composeSecurityAuditPrompt(riskSummary) {
+  const summary = riskSummary || {};
+  const snippets = Array.isArray(summary.suspiciousSnippets) ? summary.suspiciousSnippets : [];
+  const externalRefs = Array.isArray(summary.externalRefs) ? summary.externalRefs : [];
   return [
-    "Audit this generated profile HTML/CSS for publish security risk.",
-    "Block script execution, event handlers, unsafe SVG, remote resource loads, forms, dangerous navigation, and web capability abuse.",
-    "Return allow=true only when it is safe under a no-scripts sandbox with parent-owned trusted media.",
+    "Audit this generated profile for publish security risk.",
+    "The deterministic validator has already accepted the document and blocked scripts, event handlers, executable protocols, remote http resources, forms, blocked tags, and unsafe SVG/CSS at-rules.",
+    "You are reviewing only specific suspicious constructs that survived deterministic validation. Decide whether any of them indicate a real publish risk under a no-scripts sandbox with parent-owned trusted media.",
+    "Return allow=true only when no flagged construct indicates a concrete publish risk.",
+    "Set confidence high when the flagged constructs are clearly benign. Set confidence low only when a specific snippet is genuinely ambiguous; cite it in reason.",
     "",
-    "HTML:",
-    String(patch?.html || "").slice(0, 120000),
+    "Risk summary:",
+    JSON.stringify(
+      {
+        htmlBytes: summary.htmlBytes || 0,
+        cssBytes: summary.cssBytes || 0,
+        inlineSvgCount: summary.inlineSvgCount || 0,
+        trustedImageCount: summary.trustedImageCount || 0,
+        externalRefs,
+        oversized: Boolean(summary.oversized),
+      },
+      null,
+      0,
+    ),
     "",
-    "CSS:",
-    String(patch?.css || "").slice(0, 80000),
+    "Flagged snippets:",
+    snippets.length === 0
+      ? "(none — review based on size/origins only)"
+      : snippets
+          .slice(0, 12)
+          .map((entry, index) => `${index + 1}. [${entry.kind}] ${entry.excerpt}`)
+          .join("\n"),
   ].join("\n");
 }
 
-async function requestProfileSecurityAudit({ apiKey, patch, model }) {
+async function requestProfileSecurityAudit({ apiKey, riskSummary, model }) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -744,7 +769,7 @@ async function requestProfileSecurityAudit({ apiKey, patch, model }) {
     },
     body: JSON.stringify({
       model,
-      input: [{ role: "user", content: [{ type: "input_text", text: composeSecurityAuditPrompt(patch) }] }],
+      input: [{ role: "user", content: [{ type: "input_text", text: composeSecurityAuditPrompt(riskSummary) }] }],
       text: { format: profileSecurityAuditFormat },
     }),
   });
@@ -781,12 +806,15 @@ function isAuditModelUnavailableError(error) {
   );
 }
 
-async function requestProfileSecurityAuditWithFallback({ apiKey, patch }) {
+async function requestProfileSecurityAuditWithFallback({ apiKey, riskSummary }) {
   const models = auditModelCandidates();
   let lastError;
+  let usedModel;
   for (const [index, model] of models.entries()) {
     try {
-      return await requestProfileSecurityAudit({ apiKey, patch, model });
+      const audit = await requestProfileSecurityAudit({ apiKey, riskSummary, model });
+      usedModel = model;
+      return { audit, model: usedModel };
     } catch (error) {
       lastError = error;
       if (index >= models.length - 1 || !isAuditModelUnavailableError(error)) {
@@ -1476,13 +1504,27 @@ async function runAgentEdit(input, state) {
   const mode = input?.mode === "reasoning" ? "reasoning" : "fast";
   const model = modelForMode(mode);
   const reasoningEffort = reasoningEffortForMode(mode);
+  const sessionId = state?.session?.id;
+  const totalStartedAt = agentEditNow();
   let providerConversationId;
+  let currentPhase = "generating";
 
   try {
     await updateSessionProgress(databaseUrl, state.session.id, "checking_web_context");
+    currentPhase = "checking_web_context";
+    const webContextStartedAt = agentEditNow();
     const webContext = await resolveWebContextForPrompt(prompt);
-    await updateSessionProgress(databaseUrl, state.session.id, "generating");
+    logAgentEditPhase("web_context", {
+      sessionId,
+      elapsedMs: agentEditNow() - webContextStartedAt,
+      status: webContext?.status,
+      safeFrames: webContext?.safeFrames?.length || 0,
+      safeImages: webContext?.safeImages?.length || 0,
+    });
 
+    await updateSessionProgress(databaseUrl, state.session.id, "generating");
+    currentPhase = "generating";
+    const generationStartedAt = agentEditNow();
     const providerResult = await requestProfilePatch({
       apiKey,
       prompt: composePrompt({ ...input, prompt }, state.currentVersion, webContext),
@@ -1491,14 +1533,31 @@ async function runAgentEdit(input, state) {
       input,
     });
     providerConversationId = providerResult.providerConversationId;
+    logAgentEditPhase("generation", {
+      sessionId,
+      elapsedMs: agentEditNow() - generationStartedAt,
+      htmlBytes: Buffer.byteLength(String(providerResult?.patch?.html || ""), "utf8"),
+      cssBytes: Buffer.byteLength(String(providerResult?.patch?.css || ""), "utf8"),
+      model,
+    });
+
     await updateSessionProgress(databaseUrl, state.session.id, "validating");
+    currentPhase = "validating";
+    const validationStartedAt = agentEditNow();
     let patch = withGeneratedCssRepairs(providerResult.patch);
     let validationMessage = await validateProfilePatch(patch, {
       currentHtml: state.currentVersion.html,
       webContext,
     });
+    logAgentEditPhase("validation", {
+      sessionId,
+      elapsedMs: agentEditNow() - validationStartedAt,
+      passed: !validationMessage,
+    });
     if (validationMessage) {
       await updateSessionProgress(databaseUrl, state.session.id, "repairing");
+      currentPhase = "repairing";
+      const repairStartedAt = agentEditNow();
       const repairResult = await requestProfilePatch({
         apiKey,
         prompt: composeRepairPrompt(
@@ -1513,11 +1572,24 @@ async function runAgentEdit(input, state) {
         input,
       });
       providerConversationId = repairResult.providerConversationId || providerConversationId;
+      logAgentEditPhase("repair", {
+        sessionId,
+        elapsedMs: agentEditNow() - repairStartedAt,
+        model,
+      });
       await updateSessionProgress(databaseUrl, state.session.id, "validating");
+      currentPhase = "validating";
+      const revalidationStartedAt = agentEditNow();
       patch = withGeneratedCssRepairs(repairResult.patch);
       validationMessage = await validateProfilePatch(patch, {
         currentHtml: state.currentVersion.html,
         webContext,
+      });
+      logAgentEditPhase("validation", {
+        sessionId,
+        elapsedMs: agentEditNow() - revalidationStartedAt,
+        passed: !validationMessage,
+        afterRepair: true,
       });
 
       if (validationMessage) {
@@ -1526,6 +1598,11 @@ async function runAgentEdit(input, state) {
           warnings: warningArray(patch.warnings),
           error: validationMessage,
           progressPhase: "validating",
+        });
+        logAgentEditPhase("total", {
+          sessionId,
+          elapsedMs: agentEditNow() - totalStartedAt,
+          outcome: "validation_failed",
         });
         return serverFailure(validationMessage, {
           summary: "Assistant output failed validation.",
@@ -1539,28 +1616,67 @@ async function runAgentEdit(input, state) {
 
     const validatedPatch = validatedGeneratedPatch(patch, validationMessage);
     await updateSessionProgress(databaseUrl, state.session.id, "validating");
-    const securityAudit = await requestProfileSecurityAuditWithFallback({
-      apiKey,
-      patch: validatedPatch,
+    currentPhase = "risk_summary";
+    const riskStartedAt = agentEditNow();
+    const riskSummary = summarizeProfileRisk(validatedPatch);
+    logAgentEditPhase("risk_summary", {
+      sessionId,
+      elapsedMs: agentEditNow() - riskStartedAt,
+      clean: riskSummary.clean,
+      htmlBytes: riskSummary.htmlBytes,
+      cssBytes: riskSummary.cssBytes,
+      inlineSvgCount: riskSummary.inlineSvgCount,
+      trustedImageCount: riskSummary.trustedImageCount,
+      snippetCount: riskSummary.suspiciousSnippets.length,
+      externalRefs: riskSummary.externalRefs.length,
+      oversized: riskSummary.oversized,
     });
-    const securityDecision = securityAuditDecision(securityAudit);
-    if (!securityDecision.ok) {
-      const session = await updateSessionFailure(databaseUrl, state.session.id, {
-        summary: "Assistant output failed security audit.",
-        warnings: warningArray(validatedPatch.warnings),
-        error: securityDecision.message,
-        progressPhase: "validating",
+
+    if (!riskSummary.clean) {
+      currentPhase = "audit";
+      const auditStartedAt = agentEditNow();
+      const { audit: securityAudit, model: auditModel } = await requestProfileSecurityAuditWithFallback({
+        apiKey,
+        riskSummary,
       });
-      return serverFailure(securityDecision.message, {
-        summary: "Assistant output failed security audit.",
-        warnings: warningArray(validatedPatch.warnings),
-        validationErrors: [securityDecision.message],
-        session,
-        providerConversationId,
+      const securityDecision = securityAuditDecision(securityAudit);
+      logAgentEditPhase("audit", {
+        sessionId,
+        elapsedMs: agentEditNow() - auditStartedAt,
+        skipped: false,
+        model: auditModel,
+        allow: securityDecision.audit.allow,
+        risk: securityDecision.audit.risk,
+        confidence: securityDecision.audit.confidence,
+        ok: securityDecision.ok,
       });
+      if (!securityDecision.ok) {
+        const session = await updateSessionFailure(databaseUrl, state.session.id, {
+          summary: "Assistant output failed security audit.",
+          warnings: warningArray(validatedPatch.warnings),
+          error: securityDecision.message,
+          progressPhase: "validating",
+        });
+        logAgentEditPhase("total", {
+          sessionId,
+          elapsedMs: agentEditNow() - totalStartedAt,
+          outcome: "audit_blocked",
+        });
+        return serverFailure(securityDecision.message, {
+          summary: "Assistant output failed security audit.",
+          warnings: warningArray(validatedPatch.warnings),
+          validationErrors: [securityDecision.message],
+          session,
+          providerConversationId,
+        });
+      }
+    } else {
+      logAgentEditPhase("audit", { sessionId, elapsedMs: 0, skipped: true });
     }
 
     await updateSessionProgress(databaseUrl, state.session.id, "applying");
+    currentPhase = "applying";
+    const persistStartedAt = agentEditNow();
     const persisted = await persistAppliedPatch(
       databaseUrl,
       { ...input, prompt },
@@ -1570,6 +1686,17 @@ async function runAgentEdit(input, state) {
       model,
       webContext,
     );
+    logAgentEditPhase("persistence", {
+      sessionId,
+      elapsedMs: agentEditNow() - persistStartedAt,
+    });
+
+    logAgentEditPhase("total", {
+      sessionId,
+      elapsedMs: agentEditNow() - totalStartedAt,
+      outcome: "ok",
+      auditSkipped: riskSummary.clean,
+    });
 
     return {
       ok: true,
@@ -1583,6 +1710,13 @@ async function runAgentEdit(input, state) {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Assistant edit failed.";
+    logAgentEditPhase("total", {
+      sessionId,
+      elapsedMs: agentEditNow() - totalStartedAt,
+      outcome: "error",
+      phase: currentPhase,
+      error: message,
+    });
     const session = await updateSessionFailure(databaseUrl, state?.session?.id, {
       summary: "Agent edit failed.",
       warnings: [],
