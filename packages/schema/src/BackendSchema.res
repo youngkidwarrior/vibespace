@@ -199,6 +199,9 @@ type profileEditSession = {
   @live @gql.field summary: string,
   @live @gql.field warnings: array<string>,
   @live @gql.field error: option<string>,
+  @live @gql.field failedHtml: option<string>,
+  @live @gql.field failedCss: option<string>,
+  @live @gql.field failedValidationMessage: option<string>,
   @live @gql.field createdAt: string,
   @live @gql.field updatedAt: string,
 }
@@ -800,6 +803,9 @@ let fixtureEditSession: profileEditSession = {
   summary: "Applied a fixture agent edit.",
   warnings: [],
   error: None,
+  failedHtml: None,
+  failedCss: None,
+  failedValidationMessage: None,
   createdAt,
   updatedAt,
 }
@@ -1261,6 +1267,9 @@ type agentServiceSession = {
   summary: string,
   warnings: array<string>,
   error: Nullable.t<string>,
+  failedHtml: Nullable.t<string>,
+  failedCss: Nullable.t<string>,
+  failedValidationMessage: Nullable.t<string>,
   createdAt: option<string>,
   updatedAt: option<string>,
 }
@@ -1996,6 +2005,9 @@ let profileEditSessionFromFields = (
   ~summary: string,
   ~warnings: array<string>,
   ~error: option<string>,
+  ~failedHtml: option<string>,
+  ~failedCss: option<string>,
+  ~failedValidationMessage: option<string>,
   ~createdAt: option<string>,
   ~updatedAt: option<string>,
 ): profileEditSession => {
@@ -2011,6 +2023,9 @@ let profileEditSessionFromFields = (
   summary,
   warnings,
   error,
+  failedHtml,
+  failedCss,
+  failedValidationMessage,
   createdAt: createdAt->stringOrDefault(fallbackUpdatedAt),
   updatedAt: updatedAt->stringOrDefault(fallbackUpdatedAt),
 }
@@ -2028,6 +2043,9 @@ let profileEditSessionFromDbFields = (
   ~summary: string,
   ~warningsJson: option<string>,
   ~error: option<string>,
+  ~failedHtml: option<string>=None,
+  ~failedCss: option<string>=None,
+  ~failedValidationMessage: option<string>=None,
   ~createdAt: option<string>,
   ~updatedAt: option<string>,
 ): profileEditSession =>
@@ -2044,6 +2062,9 @@ let profileEditSessionFromDbFields = (
     ~summary,
     ~warnings=warningsJson->stringArrayFromJson,
     ~error,
+    ~failedHtml,
+    ~failedCss,
+    ~failedValidationMessage,
     ~createdAt,
     ~updatedAt,
   )
@@ -2062,6 +2083,9 @@ let profileEditSessionFromAgentService = (row: agentServiceSession): profileEdit
     ~summary=row.summary,
     ~warnings=row.warnings,
     ~error=row.error->Nullable.toOption,
+    ~failedHtml=row.failedHtml->Nullable.toOption,
+    ~failedCss=row.failedCss->Nullable.toOption,
+    ~failedValidationMessage=row.failedValidationMessage->Nullable.toOption,
     ~createdAt=row.createdAt,
     ~updatedAt=row.updatedAt,
   )
@@ -2082,6 +2106,9 @@ let profileEditSessionFromGetById = (
     ~summary=row.summary,
     ~warningsJson=row.warningsJson,
     ~error=row.error,
+    ~failedHtml=row.failedHtml,
+    ~failedCss=row.failedCss,
+    ~failedValidationMessage=row.failedValidationMessage,
     ~createdAt=row.createdAt,
     ~updatedAt=row.updatedAt,
   )
@@ -2102,6 +2129,9 @@ let profileEditSessionFromList = (
     ~summary=row.summary,
     ~warningsJson=row.warningsJson,
     ~error=row.error,
+    ~failedHtml=row.failedHtml,
+    ~failedCss=row.failedCss,
+    ~failedValidationMessage=row.failedValidationMessage,
     ~createdAt=row.createdAt,
     ~updatedAt=row.updatedAt,
   )
@@ -2122,6 +2152,9 @@ let profileEditSessionFromCancel = (
     ~summary=row.summary,
     ~warningsJson=row.warningsJson,
     ~error=row.error,
+    ~failedHtml=row.failedHtml,
+    ~failedCss=row.failedCss,
+    ~failedValidationMessage=row.failedValidationMessage,
     ~createdAt=row.createdAt,
     ~updatedAt=row.updatedAt,
   )

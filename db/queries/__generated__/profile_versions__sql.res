@@ -3415,6 +3415,9 @@ type getProfileEditSessionByIdParams = {
 type getProfileEditSessionByIdResult = {
   createdAt: option<string>,
   error: option<string>,
+  failedCss: option<string>,
+  failedHtml: option<string>,
+  failedValidationMessage: option<string>,
   id: string,
   profileId: string,
   progressPhase: string,
@@ -3436,7 +3439,7 @@ type getProfileEditSessionByIdQuery = {
   result: getProfileEditSessionByIdResult,
 }
 
-%%private(let getProfileEditSessionByIdIR: IR.t = %raw(`{"usedParamSet":{"id":true},"params":[{"name":"id","required":true,"transform":{"type":"scalar"},"locs":[{"a":563,"b":566}]}],"statement":"SELECT\n  pes.id AS \"id\",\n  pes.profile_id AS \"profileId\",\n  pes.user_id AS \"userId\",\n  pes.provider_conversation_id AS \"providerConversationId\",\n  pes.status AS \"status\",\n  pes.progress_phase AS \"progressPhase\",\n  pes.prompt AS \"prompt\",\n  pes.selection_snapshot_id AS \"selectionSnapshotId\",\n  pes.result_version_id AS \"resultVersionId\",\n  pes.summary AS \"summary\",\n  pes.warnings::text AS \"warningsJson\",\n  pes.error AS \"error\",\n  pes.created_at::text AS \"createdAt\",\n  pes.updated_at::text AS \"updatedAt\"\nFROM vibespace.profile_edit_sessions pes\nWHERE pes.id = :id!"}`))
+%%private(let getProfileEditSessionByIdIR: IR.t = %raw(`{"usedParamSet":{"id":true},"params":[{"name":"id","required":true,"transform":{"type":"scalar"},"locs":[{"a":693,"b":696}]}],"statement":"SELECT\n  pes.id AS \"id\",\n  pes.profile_id AS \"profileId\",\n  pes.user_id AS \"userId\",\n  pes.provider_conversation_id AS \"providerConversationId\",\n  pes.status AS \"status\",\n  pes.progress_phase AS \"progressPhase\",\n  pes.prompt AS \"prompt\",\n  pes.selection_snapshot_id AS \"selectionSnapshotId\",\n  pes.result_version_id AS \"resultVersionId\",\n  pes.summary AS \"summary\",\n  pes.warnings::text AS \"warningsJson\",\n  pes.error AS \"error\",\n  pes.failed_html AS \"failedHtml\",\n  pes.failed_css AS \"failedCss\",\n  pes.failed_validation_message AS \"failedValidationMessage\",\n  pes.created_at::text AS \"createdAt\",\n  pes.updated_at::text AS \"updatedAt\"\nFROM vibespace.profile_edit_sessions pes\nWHERE pes.id = :id!"}`))
 
 /**
  Runnable query:
@@ -3454,6 +3457,9 @@ SELECT
   pes.summary AS "summary",
   pes.warnings::text AS "warningsJson",
   pes.error AS "error",
+  pes.failed_html AS "failedHtml",
+  pes.failed_css AS "failedCss",
+  pes.failed_validation_message AS "failedValidationMessage",
   pes.created_at::text AS "createdAt",
   pes.updated_at::text AS "updatedAt"
 FROM vibespace.profile_edit_sessions pes
@@ -3523,6 +3529,9 @@ type listProfileEditSessionsForProfileParams = {
 type listProfileEditSessionsForProfileResult = {
   createdAt: option<string>,
   error: option<string>,
+  failedCss: option<string>,
+  failedHtml: option<string>,
+  failedValidationMessage: option<string>,
   id: string,
   profileId: string,
   progressPhase: string,
@@ -3544,7 +3553,7 @@ type listProfileEditSessionsForProfileQuery = {
   result: listProfileEditSessionsForProfileResult,
 }
 
-%%private(let listProfileEditSessionsForProfileIR: IR.t = %raw(`{"usedParamSet":{"profileId":true},"params":[{"name":"profileId","required":true,"transform":{"type":"scalar"},"locs":[{"a":571,"b":581}]}],"statement":"SELECT\n  pes.id AS \"id\",\n  pes.profile_id AS \"profileId\",\n  pes.user_id AS \"userId\",\n  pes.provider_conversation_id AS \"providerConversationId\",\n  pes.status AS \"status\",\n  pes.progress_phase AS \"progressPhase\",\n  pes.prompt AS \"prompt\",\n  pes.selection_snapshot_id AS \"selectionSnapshotId\",\n  pes.result_version_id AS \"resultVersionId\",\n  pes.summary AS \"summary\",\n  pes.warnings::text AS \"warningsJson\",\n  pes.error AS \"error\",\n  pes.created_at::text AS \"createdAt\",\n  pes.updated_at::text AS \"updatedAt\"\nFROM vibespace.profile_edit_sessions pes\nWHERE pes.profile_id = :profileId!\nORDER BY pes.created_at DESC\nLIMIT 100"}`))
+%%private(let listProfileEditSessionsForProfileIR: IR.t = %raw(`{"usedParamSet":{"profileId":true},"params":[{"name":"profileId","required":true,"transform":{"type":"scalar"},"locs":[{"a":701,"b":711}]}],"statement":"SELECT\n  pes.id AS \"id\",\n  pes.profile_id AS \"profileId\",\n  pes.user_id AS \"userId\",\n  pes.provider_conversation_id AS \"providerConversationId\",\n  pes.status AS \"status\",\n  pes.progress_phase AS \"progressPhase\",\n  pes.prompt AS \"prompt\",\n  pes.selection_snapshot_id AS \"selectionSnapshotId\",\n  pes.result_version_id AS \"resultVersionId\",\n  pes.summary AS \"summary\",\n  pes.warnings::text AS \"warningsJson\",\n  pes.error AS \"error\",\n  pes.failed_html AS \"failedHtml\",\n  pes.failed_css AS \"failedCss\",\n  pes.failed_validation_message AS \"failedValidationMessage\",\n  pes.created_at::text AS \"createdAt\",\n  pes.updated_at::text AS \"updatedAt\"\nFROM vibespace.profile_edit_sessions pes\nWHERE pes.profile_id = :profileId!\nORDER BY pes.created_at DESC\nLIMIT 100"}`))
 
 /**
  Runnable query:
@@ -3562,6 +3571,9 @@ SELECT
   pes.summary AS "summary",
   pes.warnings::text AS "warningsJson",
   pes.error AS "error",
+  pes.failed_html AS "failedHtml",
+  pes.failed_css AS "failedCss",
+  pes.failed_validation_message AS "failedValidationMessage",
   pes.created_at::text AS "createdAt",
   pes.updated_at::text AS "updatedAt"
 FROM vibespace.profile_edit_sessions pes
@@ -3633,6 +3645,9 @@ type cancelProfileEditSessionParams = {
 type cancelProfileEditSessionResult = {
   createdAt: option<string>,
   error: option<string>,
+  failedCss: option<string>,
+  failedHtml: option<string>,
+  failedValidationMessage: option<string>,
   id: string,
   profileId: string,
   progressPhase: string,
@@ -3654,7 +3669,7 @@ type cancelProfileEditSessionQuery = {
   result: cancelProfileEditSessionResult,
 }
 
-%%private(let cancelProfileEditSessionIR: IR.t = %raw(`{"usedParamSet":{"id":true},"params":[{"name":"id","required":true,"transform":{"type":"scalar"},"locs":[{"a":169,"b":172}]}],"statement":"UPDATE vibespace.profile_edit_sessions pes\nSET\n  status = 'canceled',\n  progress_phase = 'preparing',\n  error = 'Canceled by user.',\n  updated_at = now()\nWHERE pes.id = :id!\nRETURNING\n  pes.id AS \"id\",\n  pes.profile_id AS \"profileId\",\n  pes.user_id AS \"userId\",\n  pes.provider_conversation_id AS \"providerConversationId\",\n  pes.status AS \"status\",\n  pes.progress_phase AS \"progressPhase\",\n  pes.prompt AS \"prompt\",\n  pes.selection_snapshot_id AS \"selectionSnapshotId\",\n  pes.result_version_id AS \"resultVersionId\",\n  pes.summary AS \"summary\",\n  pes.warnings::text AS \"warningsJson\",\n  pes.error AS \"error\",\n  pes.created_at::text AS \"createdAt\",\n  pes.updated_at::text AS \"updatedAt\""}`))
+%%private(let cancelProfileEditSessionIR: IR.t = %raw(`{"usedParamSet":{"id":true},"params":[{"name":"id","required":true,"transform":{"type":"scalar"},"locs":[{"a":169,"b":172}]}],"statement":"UPDATE vibespace.profile_edit_sessions pes\nSET\n  status = 'canceled',\n  progress_phase = 'preparing',\n  error = 'Canceled by user.',\n  updated_at = now()\nWHERE pes.id = :id!\nRETURNING\n  pes.id AS \"id\",\n  pes.profile_id AS \"profileId\",\n  pes.user_id AS \"userId\",\n  pes.provider_conversation_id AS \"providerConversationId\",\n  pes.status AS \"status\",\n  pes.progress_phase AS \"progressPhase\",\n  pes.prompt AS \"prompt\",\n  pes.selection_snapshot_id AS \"selectionSnapshotId\",\n  pes.result_version_id AS \"resultVersionId\",\n  pes.summary AS \"summary\",\n  pes.warnings::text AS \"warningsJson\",\n  pes.error AS \"error\",\n  pes.failed_html AS \"failedHtml\",\n  pes.failed_css AS \"failedCss\",\n  pes.failed_validation_message AS \"failedValidationMessage\",\n  pes.created_at::text AS \"createdAt\",\n  pes.updated_at::text AS \"updatedAt\""}`))
 
 /**
  Runnable query:
@@ -3679,6 +3694,9 @@ RETURNING
   pes.summary AS "summary",
   pes.warnings::text AS "warningsJson",
   pes.error AS "error",
+  pes.failed_html AS "failedHtml",
+  pes.failed_css AS "failedCss",
+  pes.failed_validation_message AS "failedValidationMessage",
   pes.created_at::text AS "createdAt",
   pes.updated_at::text AS "updatedAt"
  ```

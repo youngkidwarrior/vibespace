@@ -89,6 +89,9 @@ CREATE TABLE profile_edit_sessions (
   summary text NOT NULL DEFAULT '',
   warnings jsonb NOT NULL DEFAULT '[]'::jsonb,
   error text,
+  failed_html text,
+  failed_css text,
+  failed_validation_message text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

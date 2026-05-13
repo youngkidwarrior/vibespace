@@ -1644,6 +1644,33 @@ t_ProfileEditSession.contents = GraphQLObjectType.make({
           src["error"]
         }),
       },
+      "failedCss": {
+        typ: Scalars.string->Scalars.toGraphQLType,
+        description: ?None,
+        deprecationReason: ?None,
+        resolve: makeResolveFn((src, _args, _ctx, _info) => {
+          let src = typeUnwrapper(src)
+          src["failedCss"]
+        }),
+      },
+      "failedHtml": {
+        typ: Scalars.string->Scalars.toGraphQLType,
+        description: ?None,
+        deprecationReason: ?None,
+        resolve: makeResolveFn((src, _args, _ctx, _info) => {
+          let src = typeUnwrapper(src)
+          src["failedHtml"]
+        }),
+      },
+      "failedValidationMessage": {
+        typ: Scalars.string->Scalars.toGraphQLType,
+        description: ?None,
+        deprecationReason: ?None,
+        resolve: makeResolveFn((src, _args, _ctx, _info) => {
+          let src = typeUnwrapper(src)
+          src["failedValidationMessage"]
+        }),
+      },
       "id": {
         typ: Scalars.id->Scalars.toGraphQLType->nonNull,
         description: "Relay global id for every type implementing Node.",
