@@ -25,6 +25,18 @@ module HealthResponse = {
   @new external make: string => Fetch.Response.t = "Response"
 }
 
+module RuntimeLog = {
+  @module("./RuntimeLog.js") external now: unit => float = "now"
+  @module("./RuntimeLog.js") external logGraphqlRequest: string => unit = "logGraphqlRequest"
+  @module("./RuntimeLog.js") external logGraphqlResponse: (
+    string,
+    float,
+    Fetch.Response.t,
+  ) => unit = "logGraphqlResponse"
+  @module("./RuntimeLog.js") external logGraphqlError: (string, float, exn) => unit =
+    "logGraphqlError"
+}
+
 module LocalSessionToken = {
   @module("@vibespace/schema/src/LocalSessionToken.js") external verifiedUserIdFromHeaders: (
     string,
@@ -89,12 +101,23 @@ let yoga = createYoga({
 let yogaFetch = yoga->serverAsFetch
 
 let fetch = async (request: Request.t) => {
-  let pathname = request->Request.url->Url.make->Url.pathname
+  let url = request->Request.url
+  let pathname = url->Url.make->Url.pathname
 
   if pathname == "/health" {
     "ok"->HealthResponse.make
   } else {
-    await yogaFetch(request)
+    let startedAt = RuntimeLog.now()
+    RuntimeLog.logGraphqlRequest(url)
+    try {
+      let response = await yogaFetch(request)
+      RuntimeLog.logGraphqlResponse(url, startedAt, response)
+      response
+    } catch {
+    | exception_ =>
+      RuntimeLog.logGraphqlError(url, startedAt, exception_)
+      throw(exception_)
+    }
   }
 }
 
