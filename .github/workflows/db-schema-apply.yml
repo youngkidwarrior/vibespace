@@ -1,0 +1,124 @@
+name: DB Schema Apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Plan only — upload the plan and skip apply"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "db/schemas/**"
+      - "db/bootstrap/**"
+      - ".github/workflows/db-schema-apply.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-schema-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply pgschema To Railway
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      PGSCHEMA_SCHEMA: vibespace
+      PGSSLMODE: require
+      YARN_ENABLE_GLOBAL_CACHE: "false"
+      YARN_ENABLE_MIRROR: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@4.3.1 --activate
+
+      - name: Install Postgres Client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Parse RAILWAY_DATABASE_URL Into PG Env Vars
+        env:
+          RAILWAY_DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        run: |
+          if [ -z "${RAILWAY_DATABASE_URL:-}" ]; then
+            echo "RAILWAY_DATABASE_URL secret is not set" >&2
+            exit 1
+          fi
+          python3 <<'PY'
+          import os
+          from urllib.parse import urlparse, unquote
+
+          url = os.environ["RAILWAY_DATABASE_URL"]
+          parsed = urlparse(url)
+          host = parsed.hostname
+          port = parsed.port or 5432
+          user = unquote(parsed.username or "")
+          password = unquote(parsed.password or "")
+          database = parsed.path.lstrip("/")
+
+          if not host or not user or not database:
+              raise SystemExit("RAILWAY_DATABASE_URL is missing host, user, or database")
+
+          print(f"::add-mask::{password}")
+          print(f"::add-mask::{user}")
+
+          with open(os.environ["GITHUB_ENV"], "a") as fh:
+              fh.write(f"PGHOST={host}\n")
+              fh.write(f"PGPORT={port}\n")
+              fh.write(f"PGUSER={user}\n")
+              fh.write(f"PGPASSWORD={password}\n")
+              fh.write(f"PGDATABASE={database}\n")
+          PY
+
+      - name: Bootstrap Schema And Extensions
+        run: yarn db:schema:bootstrap
+
+      - name: Plan Schema Changes
+        run: yarn db:schema:plan
+
+      - name: Print Plan
+        run: |
+          echo "=== pgschema plan (human) ==="
+          cat db/plans/vibespace.plan.txt
+          echo
+          echo "=== pgschema plan (sql) ==="
+          cat db/plans/vibespace.plan.sql
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pgschema-plan
+          path: db/plans/vibespace.plan.*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Apply Schema Changes
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+        run: yarn db:schema:apply
+
+      - name: Sanity Check profile_edit_sessions
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+        run: |
+          psql \
+            -h "$PGHOST" \
+            -p "$PGPORT" \
+            -U "$PGUSER" \
+            -d "$PGDATABASE" \
+            -c "\d vibespace.profile_edit_sessions"
