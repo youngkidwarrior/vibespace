@@ -22,6 +22,7 @@ import {
 import { normalizeSendtag } from "./SendProfileLookup.js";
 import { summarizeProfileRisk } from "./ProfileRiskSummary.js";
 import { logAgentEditPhase, now as agentEditNow } from "./AgentEditLog.js";
+import { locateValidationProblem } from "./ProfileValidationLocator.js";
 
 const defaultFastModel = "gpt-5.4-nano";
 const defaultReasoningModel = "gpt-5.5";
@@ -1089,6 +1090,7 @@ const editSessionSelect = `
   failed_html AS "failedHtml",
   failed_css AS "failedCss",
   failed_validation_message AS "failedValidationMessage",
+  failed_validation_span::text AS "failedValidationSpanJson",
   created_at::text AS "createdAt",
   updated_at::text AS "updatedAt"
 `;
@@ -1163,7 +1165,16 @@ async function createSessionAndLoadSource(databaseUrl, input) {
 async function updateSessionFailure(
   databaseUrl,
   sessionId,
-  { summary, warnings, error, progressPhase, failedHtml, failedCss, failedValidationMessage },
+  {
+    summary,
+    warnings,
+    error,
+    progressPhase,
+    failedHtml,
+    failedCss,
+    failedValidationMessage,
+    failedValidationSpan,
+  },
 ) {
   if (!sessionId) return undefined;
 
@@ -1181,6 +1192,7 @@ async function updateSessionFailure(
           failed_html = $6,
           failed_css = $7,
           failed_validation_message = $8,
+          failed_validation_span = $9::jsonb,
           updated_at = now()
         WHERE id = $1
         RETURNING ${editSessionSelect}
@@ -1194,6 +1206,7 @@ async function updateSessionFailure(
         failedHtml ?? null,
         failedCss ?? null,
         failedValidationMessage ?? null,
+        failedValidationSpan ? JSON.stringify(failedValidationSpan) : null,
       ],
     )
   );
@@ -1640,6 +1653,11 @@ async function runAgentEdit(input, state) {
       });
 
       if (validationMessage) {
+        const failedValidationSpan = locateValidationProblem({
+          html: patch?.html || "",
+          css: patch?.css || "",
+          message: validationMessage,
+        });
         const session = await updateSessionFailure(databaseUrl, state.session.id, {
           summary: "Assistant output failed validation.",
           warnings: warningArray(patch.warnings),
@@ -1648,6 +1666,7 @@ async function runAgentEdit(input, state) {
           failedHtml: patch?.html || null,
           failedCss: patch?.css || null,
           failedValidationMessage: validationMessage,
+          failedValidationSpan,
         });
         logAgentEditPhase("total", {
           sessionId,

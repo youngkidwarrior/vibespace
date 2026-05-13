@@ -454,6 +454,7 @@ type ProfileEditSession implements Node {
   failedHtml: String
   failedCss: String
   failedValidationMessage: String
+  failedValidationSpanJson: String
   createdAt: String!
   updatedAt: String!
 

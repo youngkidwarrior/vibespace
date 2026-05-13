@@ -830,6 +830,7 @@ SELECT
   pes.failed_html AS "failedHtml",
   pes.failed_css AS "failedCss",
   pes.failed_validation_message AS "failedValidationMessage",
+  pes.failed_validation_span::text AS "failedValidationSpanJson",
   pes.created_at::text AS "createdAt",
   pes.updated_at::text AS "updatedAt"
 FROM vibespace.profile_edit_sessions pes
@@ -852,6 +853,7 @@ SELECT
   pes.failed_html AS "failedHtml",
   pes.failed_css AS "failedCss",
   pes.failed_validation_message AS "failedValidationMessage",
+  pes.failed_validation_span::text AS "failedValidationSpanJson",
   pes.created_at::text AS "createdAt",
   pes.updated_at::text AS "updatedAt"
 FROM vibespace.profile_edit_sessions pes
@@ -883,6 +885,7 @@ RETURNING
   pes.failed_html AS "failedHtml",
   pes.failed_css AS "failedCss",
   pes.failed_validation_message AS "failedValidationMessage",
+  pes.failed_validation_span::text AS "failedValidationSpanJson",
   pes.created_at::text AS "createdAt",
   pes.updated_at::text AS "updatedAt";
 
