@@ -124,6 +124,11 @@ union RedeemInviteResult =
   | MutationFailed
 
 
+union RequestTargetedAgentEditRepairResult = 
+  | ProfileEditSessionMutationSucceeded
+  | ProfileEditSessionMutationFailed
+
+
 union RestoreProfileVersionResult = 
   | ProfileVersionMutationSucceeded
   | ProfileVersionMutationFailed
@@ -174,6 +179,12 @@ input ReactivateUsedInviteInput {
 input RedeemInviteInput {
   code: String!
   displayName: String
+}
+
+input RequestTargetedAgentEditRepairInput {
+  editSessionId: ID!
+  profileName: String
+  sendtag: String
 }
 
 input RestoreProfileVersionInput {
@@ -346,6 +357,9 @@ type Mutation {
 
   """Reactivate the invite code the current viewer used by disabling the viewer account."""
   reactivateUsedInvite(input: ReactivateUsedInviteInput!): ReactivateUsedInviteResult!
+
+  """Run a user-initiated targeted repair against a failed assistant edit session."""
+  requestTargetedAgentEditRepair(input: RequestTargetedAgentEditRepairInput!): RequestTargetedAgentEditRepairResult!
 
   """Cancel an edit session and persist the canceled state when DATABASE_URL is configured."""
   cancelProfileEditSession(input: CancelProfileEditSessionInput!): CancelProfileEditSessionResult!

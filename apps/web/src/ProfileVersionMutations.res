@@ -268,6 +268,61 @@ module SubmitAgentEditMutation = %relay(`
   }
 `)
 
+module RequestTargetedAgentEditRepairMutation = %relay(`
+  mutation ProfileVersionMutationsRequestTargetedAgentEditRepairMutation(
+    $input: RequestTargetedAgentEditRepairInput!
+  ) {
+    requestTargetedAgentEditRepair(input: $input) {
+      __typename
+      ... on ProfileEditSessionMutationSucceeded {
+        providerConversationId
+        resultVersionId
+        summary
+        warnings
+        validationErrors
+        succeededEditSession: editSession {
+          id
+          status
+          progressPhase
+          summary
+          warnings
+          error
+          failedHtml
+          failedCss
+          failedValidationMessage
+          failedValidationSpanJson
+          resultVersionId
+          createdAt
+          updatedAt
+        }
+      }
+      ... on ProfileEditSessionMutationFailed {
+        message
+        providerConversationId
+        resultVersionId
+        summary
+        warnings
+        validationErrors
+        failedEditSession: editSession {
+          id
+          status
+          progressPhase
+          summary
+          warnings
+          error
+          failedHtml
+          failedCss
+          failedValidationMessage
+          failedValidationSpanJson
+          resultVersionId
+          createdAt
+          updatedAt
+        }
+      }
+    }
+  }
+`)
+
 module CancelProfileEditSessionMutation = %relay(`
   mutation ProfileVersionMutationsCancelProfileEditSessionMutation(
     $input: CancelProfileEditSessionInput!

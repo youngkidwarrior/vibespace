@@ -45,8 +45,8 @@ let renderHighlightedSource = (
 ) =>
   switch span {
   | Some({source: kind, charStart, charEnd}) if kind == expectedSource =>
-    let safeStart = Js.Math.max_int(0, Js.Math.min_int(charStart, source->String.length))
-    let safeEnd = Js.Math.max_int(safeStart, Js.Math.min_int(charEnd, source->String.length))
+    let safeStart = Math.Int.max(0, Math.Int.min(charStart, source->String.length))
+    let safeEnd = Math.Int.max(safeStart, Math.Int.min(charEnd, source->String.length))
     <>
       {React.string(source->String.slice(~start=0, ~end=safeStart))}
       <mark className="rounded bg-amber-200 text-amber-900">
@@ -59,6 +59,7 @@ let renderHighlightedSource = (
 
 @react.component
 let make = (
+  ~sessionId: string,
   ~failedHtml: option<string>,
   ~failedCss: option<string>,
   ~failedValidationMessage: option<string>,
@@ -73,6 +74,42 @@ let make = (
     ->Option.getOr("Assistant output failed validation.")
 
   let (copyStatus, setCopyStatus) = React.useState(() => "")
+  let (repairStatus, setRepairStatus) = React.useState(() => "")
+  let (repairing, setRepairing) = React.useState(() => false)
+  let (commitMutation, _) =
+    ProfileVersionMutations.RequestTargetedAgentEditRepairMutation.use()
+  let canTargetedRepair = switch span {
+  | Some({source}) => source == "html"
+  | None => false
+  }
+
+  let onTryFix = () => {
+    setRepairStatus(_ => "")
+    setRepairing(_ => true)
+    commitMutation(
+      ~variables={
+        input: {
+          editSessionId: sessionId,
+        },
+      },
+      ~onCompleted=(response, errors) => {
+        setRepairing(_ => false)
+        switch errors {
+        | Some(errs) if errs->Array.length > 0 =>
+          setRepairStatus(_ => "Targeted repair could not be requested.")
+        | _ =>
+          switch response.requestTargetedAgentEditRepair {
+          | ProfileEditSessionMutationSucceeded(_) =>
+            setRepairStatus(_ => "Repair sent. The applied version should arrive on the next poll.")
+          | ProfileEditSessionMutationFailed(payload) =>
+            setRepairStatus(_ => "Repair failed: " ++ payload.message)
+          | UnselectedUnionMember(_) =>
+            setRepairStatus(_ => "Repair returned an unexpected response.")
+          }
+        }
+      },
+    )->ignore
+  }
 
   let copy = (label, value) => {
     setCopyStatus(_ => "")
@@ -99,7 +136,17 @@ let make = (
           </p>
           <p className="mt-1 text-base font-medium text-amber-900">{React.string(message)}</p>
         </div>
+        <button
+          type_="button"
+          disabled={!canTargetedRepair || repairing}
+          onClick={_ => onTryFix()}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50">
+          {React.string(repairing ? "Sending..." : "Try fix with assistant")}
+        </button>
       </header>
+      {repairStatus == ""
+        ? React.null
+        : <p className="mb-2 text-xs text-amber-700">{React.string(repairStatus)}</p>}
 
       {html == ""
         ? React.null

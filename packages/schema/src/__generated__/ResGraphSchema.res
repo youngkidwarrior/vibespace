@@ -320,6 +320,12 @@ let input_ReactivateUsedInviteInput_conversionInstructions = []
 let input_RedeemInviteInput: ref<GraphQLInputObjectType.t> = Obj.magic({"contents": null})
 let get_RedeemInviteInput = () => input_RedeemInviteInput.contents
 let input_RedeemInviteInput_conversionInstructions = []
+let input_RequestTargetedAgentEditRepairInput: ref<GraphQLInputObjectType.t> = Obj.magic({
+  "contents": null,
+})
+let get_RequestTargetedAgentEditRepairInput = () =>
+  input_RequestTargetedAgentEditRepairInput.contents
+let input_RequestTargetedAgentEditRepairInput_conversionInstructions = []
 let input_RestoreProfileVersionInput: ref<GraphQLInputObjectType.t> = Obj.magic({"contents": null})
 let get_RestoreProfileVersionInput = () => input_RestoreProfileVersionInput.contents
 let input_RestoreProfileVersionInput_conversionInstructions = []
@@ -343,6 +349,10 @@ input_DisableUserInput_conversionInstructions->Array.pushMany([])
 input_ReactivateUsedInviteInput_conversionInstructions->Array.pushMany([])
 input_RedeemInviteInput_conversionInstructions->Array.pushMany([
   ("displayName", makeInputObjectFieldConverterFn(v => v->Nullable.toOption)),
+])
+input_RequestTargetedAgentEditRepairInput_conversionInstructions->Array.pushMany([
+  ("profileName", makeInputObjectFieldConverterFn(v => v->Nullable.toOption)),
+  ("sendtag", makeInputObjectFieldConverterFn(v => v->Nullable.toOption)),
 ])
 input_RestoreProfileVersionInput_conversionInstructions->Array.pushMany([])
 input_SaveManualProfileVersionInput_conversionInstructions->Array.pushMany([
@@ -378,6 +388,11 @@ let union_ReactivateUsedInviteResult: ref<GraphQLUnionType.t> = Obj.magic({"cont
 let get_ReactivateUsedInviteResult = () => union_ReactivateUsedInviteResult.contents
 let union_RedeemInviteResult: ref<GraphQLUnionType.t> = Obj.magic({"contents": null})
 let get_RedeemInviteResult = () => union_RedeemInviteResult.contents
+let union_RequestTargetedAgentEditRepairResult: ref<GraphQLUnionType.t> = Obj.magic({
+  "contents": null,
+})
+let get_RequestTargetedAgentEditRepairResult = () =>
+  union_RequestTargetedAgentEditRepairResult.contents
 let union_RestoreProfileVersionResult: ref<GraphQLUnionType.t> = Obj.magic({"contents": null})
 let get_RestoreProfileVersionResult = () => union_RestoreProfileVersionResult.contents
 let union_SaveManualProfileVersionResult: ref<GraphQLUnionType.t> = Obj.magic({"contents": null})
@@ -430,6 +445,14 @@ let union_RedeemInviteResult_resolveType = (v: BackendSchema.redeemInviteResult)
   switch v {
   | RedeemInviteSucceeded(_) => "RedeemInviteSucceeded"
   | RedeemInviteFailed(_) => "MutationFailed"
+  }
+
+let union_RequestTargetedAgentEditRepairResult_resolveType = (
+  v: BackendSchema.requestTargetedAgentEditRepairResult,
+) =>
+  switch v {
+  | RequestTargetedAgentEditRepairSucceeded(_) => "ProfileEditSessionMutationSucceeded"
+  | RequestTargetedAgentEditRepairFailed(_) => "ProfileEditSessionMutationFailed"
   }
 
 let union_RestoreProfileVersionResult_resolveType = (
@@ -1259,6 +1282,28 @@ t_Mutation.contents = GraphQLObjectType.make({
             ~ctx,
             ~input=args["input"]->applyConversionToInputObject(
               input_RedeemInviteInput_conversionInstructions,
+            ),
+          )
+        }),
+      },
+      "requestTargetedAgentEditRepair": {
+        typ: get_RequestTargetedAgentEditRepairResult()->GraphQLUnionType.toGraphQLType->nonNull,
+        description: "Run a user-initiated targeted repair against a failed assistant edit session.",
+        deprecationReason: ?None,
+        args: {
+          "input": {
+            typ: get_RequestTargetedAgentEditRepairInput()
+            ->GraphQLInputObjectType.toGraphQLType
+            ->nonNull,
+          },
+        }->makeArgs,
+        resolve: makeResolveFn((src, args, ctx, info) => {
+          let src = typeUnwrapper(src)
+          BackendSchema.requestTargetedAgentEditRepair(
+            src,
+            ~ctx,
+            ~input=args["input"]->applyConversionToInputObject(
+              input_RequestTargetedAgentEditRepairInput_conversionInstructions,
             ),
           )
         }),
@@ -3339,6 +3384,28 @@ input_RedeemInviteInput.contents = GraphQLInputObjectType.make({
       },
     }->makeFields,
 })
+input_RequestTargetedAgentEditRepairInput.contents = GraphQLInputObjectType.make({
+  name: "RequestTargetedAgentEditRepairInput",
+  description: ?None,
+  fields: () =>
+    {
+      "editSessionId": {
+        GraphQLInputObjectType.typ: Scalars.id->Scalars.toGraphQLType->nonNull,
+        description: ?None,
+        deprecationReason: ?None,
+      },
+      "profileName": {
+        GraphQLInputObjectType.typ: Scalars.string->Scalars.toGraphQLType,
+        description: ?None,
+        deprecationReason: ?None,
+      },
+      "sendtag": {
+        GraphQLInputObjectType.typ: Scalars.string->Scalars.toGraphQLType,
+        description: ?None,
+        deprecationReason: ?None,
+      },
+    }->makeFields,
+})
 input_RestoreProfileVersionInput.contents = GraphQLInputObjectType.make({
   name: "RestoreProfileVersionInput",
   description: ?None,
@@ -3520,6 +3587,14 @@ union_RedeemInviteResult.contents = GraphQLUnionType.make({
   types: () => [get_MutationFailed(), get_RedeemInviteSucceeded()],
   resolveType: GraphQLUnionType.makeResolveUnionTypeFn(union_RedeemInviteResult_resolveType),
 })
+union_RequestTargetedAgentEditRepairResult.contents = GraphQLUnionType.make({
+  name: "RequestTargetedAgentEditRepairResult",
+  description: ?None,
+  types: () => [get_ProfileEditSessionMutationFailed(), get_ProfileEditSessionMutationSucceeded()],
+  resolveType: GraphQLUnionType.makeResolveUnionTypeFn(
+    union_RequestTargetedAgentEditRepairResult_resolveType,
+  ),
+})
 union_RestoreProfileVersionResult.contents = GraphQLUnionType.make({
   name: "RestoreProfileVersionResult",
   description: ?None,
@@ -3602,12 +3677,14 @@ let schema = GraphQLSchemaType.make({
     get_SaveManualProfileVersionResult()->GraphQLUnionType.toGraphQLType,
     get_AdminCreateSeedUserResult()->GraphQLUnionType.toGraphQLType,
     get_RestoreProfileVersionResult()->GraphQLUnionType.toGraphQLType,
+    get_RequestTargetedAgentEditRepairResult()->GraphQLUnionType.toGraphQLType,
     get_SaveManualProfileVersionInput()->GraphQLInputObjectType.toGraphQLType,
     get_AdminCreateSeedUserInput()->GraphQLInputObjectType.toGraphQLType,
     get_SubmitAgentEditInput()->GraphQLInputObjectType.toGraphQLType,
     get_AdminCreateInviteInput()->GraphQLInputObjectType.toGraphQLType,
     get_RedeemInviteInput()->GraphQLInputObjectType.toGraphQLType,
     get_CancelProfileEditSessionInput()->GraphQLInputObjectType.toGraphQLType,
+    get_RequestTargetedAgentEditRepairInput()->GraphQLInputObjectType.toGraphQLType,
     get_RestoreProfileVersionInput()->GraphQLInputObjectType.toGraphQLType,
     get_DisableUserInput()->GraphQLInputObjectType.toGraphQLType,
     get_ReactivateUsedInviteInput()->GraphQLInputObjectType.toGraphQLType,
