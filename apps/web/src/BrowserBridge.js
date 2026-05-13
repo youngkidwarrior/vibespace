@@ -3,6 +3,7 @@ import { attachToIframe } from "./SelectionBridge.res.js";
 
 const frameViewportCleanups = new WeakMap();
 const profileLinkRouterCleanups = new WeakMap();
+const trustedPlayerLayerCleanups = new WeakMap();
 
 export function debugPromptsEnabled() {
   try {
@@ -56,6 +57,126 @@ function frameViewportPayload(frameWindow, iframeDocument) {
     viewportWidth: numeric(frameWindow?.innerWidth || iframeDocument?.documentElement?.clientWidth),
     viewportHeight: numeric(frameWindow?.innerHeight || iframeDocument?.documentElement?.clientHeight),
   };
+}
+
+function trustedFrameUrl(rawSource, rawOrigin) {
+  let url;
+  try {
+    url = new URL(String(rawSource || "").trim());
+  } catch (_error) {
+    return undefined;
+  }
+
+  if (url.protocol !== "https:" || url.username || url.password) return undefined;
+
+  const origin = url.origin;
+  const expectedOrigin = String(rawOrigin || "").trim();
+  if (expectedOrigin && expectedOrigin !== origin) return undefined;
+
+  if (
+    origin === "https://www.youtube.com" ||
+    origin === "https://www.youtube-nocookie.com"
+  ) {
+    return url.pathname.startsWith("/embed/") ? url : undefined;
+  }
+
+  if (origin === "https://open.spotify.com") {
+    return url.pathname.startsWith("/embed/") ? url : undefined;
+  }
+
+  if (origin === "https://w.soundcloud.com") {
+    return url.pathname.startsWith("/player/") ? url : undefined;
+  }
+
+  if (origin === "https://player.vimeo.com") {
+    return url.pathname.startsWith("/video/") ? url : undefined;
+  }
+
+  if (origin === "https://embed.music.apple.com") {
+    return url;
+  }
+
+  return undefined;
+}
+
+function trustedPlayerFramesForDocument(iframeDocument) {
+  const nodes = Array.from(
+    iframeDocument.querySelectorAll(
+      '.vibespace-trusted-frame[data-vibespace-capability="trusted_frame"]'
+    )
+  );
+
+  return nodes
+    .map((node, index) => {
+      const url = trustedFrameUrl(
+        node.getAttribute("data-vibespace-src"),
+        node.getAttribute("data-vibespace-origin")
+      );
+      if (!url) return undefined;
+
+      const rect = node.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return undefined;
+
+      return {
+        key: [
+          String(node.getAttribute("data-vibespace-id") || "trusted-frame"),
+          String(index),
+          url.href,
+        ].join(":"),
+        source: url.href,
+        title: String(
+          node.getAttribute("data-vibespace-name") ||
+            node.getAttribute("data-vibespace-description") ||
+            "Trusted media"
+        ),
+        x: numeric(rect.left),
+        y: numeric(rect.top),
+        width: numeric(rect.width),
+        height: numeric(rect.height),
+      };
+    })
+    .filter(Boolean);
+}
+
+export function attachTrustedPlayerLayer(loadEvent, callback) {
+  const iframe = iframeFromLoadEvent(loadEvent);
+  const iframeDocument = iframe?.contentDocument || iframe?.contentWindow?.document;
+  const frameWindow = iframe?.contentWindow;
+  if (!iframe || !iframeDocument || !frameWindow) return;
+
+  trustedPlayerLayerCleanups.get(iframe)?.();
+
+  let animationFrame = 0;
+  const emit = () => {
+    if (animationFrame) cancelAnimationFrame(animationFrame);
+    animationFrame = requestAnimationFrame(() => {
+      animationFrame = 0;
+      callback(trustedPlayerFramesForDocument(iframeDocument));
+    });
+  };
+  const options = { passive: true };
+  frameWindow.addEventListener("scroll", emit, options);
+  frameWindow.addEventListener("resize", emit, options);
+
+  const observer =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver(emit)
+      : undefined;
+  if (observer) {
+    observer.observe(iframeDocument.documentElement);
+    for (const node of iframeDocument.querySelectorAll(".vibespace-trusted-frame")) {
+      observer.observe(node);
+    }
+  }
+
+  trustedPlayerLayerCleanups.set(iframe, () => {
+    frameWindow.removeEventListener("scroll", emit, options);
+    frameWindow.removeEventListener("resize", emit, options);
+    observer?.disconnect();
+    if (animationFrame) cancelAnimationFrame(animationFrame);
+  });
+
+  emit();
 }
 
 export function attachFrameViewportListener(loadEvent, callback) {

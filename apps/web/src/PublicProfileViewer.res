@@ -127,6 +127,32 @@ let make = (~profile, ~showInvitePopup=false, ~canonicalizeRootUrl=false) => {
     None
   }, [canonicalUrlKey])
   let routeProfileFrameLink = path => router.push(path)
+  let (trustedPlayerFrames, setTrustedPlayerFrames) = React.useState((): array<BrowserBridge.trustedPlayerFrame> => [])
+  let renderTrustedPlayerLayer = () =>
+    trustedPlayerFrames->Array.length == 0
+      ? React.null
+      : <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+          {trustedPlayerFrames
+          ->Array.map(frame =>
+            <iframe
+              key={frame.key}
+              className="pointer-events-auto absolute block border-0 bg-black"
+              title={frame.title}
+              src={frame.source}
+              loading=#lazy
+              allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+              allowFullScreen=true
+              referrerPolicy="strict-origin-when-cross-origin"
+              style={{
+                left: frame.x->Float.toString ++ "px",
+                top: frame.y->Float.toString ++ "px",
+                width: frame.width->Float.toString ++ "px",
+                height: frame.height->Float.toString ++ "px",
+              }}
+            />
+          )
+          ->React.array}
+        </div>
 
   switch profile.currentVersion {
   | Some(version) =>
@@ -141,7 +167,7 @@ let make = (~profile, ~showInvitePopup=false, ~canonicalizeRootUrl=false) => {
         avatarUrl: profile.sendAvatarUrl,
       }),
     )
-    <main className="min-h-screen bg-neutral-950">
+    <main className="relative min-h-screen overflow-hidden bg-neutral-950">
       <header className="pointer-events-none fixed left-4 right-4 top-4 z-20 flex items-center justify-between gap-3">
         <RelayRouter.Link
           className="pointer-events-auto inline-flex min-h-8 items-center rounded-xl border border-white/20 bg-white/85 px-3 text-sm font-black text-neutral-950 no-underline shadow-lg backdrop-blur-md"
@@ -160,10 +186,14 @@ let make = (~profile, ~showInvitePopup=false, ~canonicalizeRootUrl=false) => {
       <iframe
         className="block h-screen w-screen border-0 bg-white"
         title={profile.title ++ " on Vibespace"}
-        sandbox="allow-same-origin allow-scripts allow-popups allow-presentation"
+        sandbox="allow-same-origin allow-popups allow-presentation"
         srcDoc=preview
-        onLoad={event => BrowserBridge.attachProfileLinkRouter(event, routeProfileFrameLink)}
+        onLoad={event => {
+          BrowserBridge.attachProfileLinkRouter(event, routeProfileFrameLink)
+          BrowserBridge.attachTrustedPlayerLayer(event, frames => setTrustedPlayerFrames(_ => frames))
+        }}
       />
+      {renderTrustedPlayerLayer()}
       {showInvitePopup && invitePopupOpen
         ? renderInvitePopup(~onClose=() => setInvitePopupOpen(_ => false))
         : React.null}

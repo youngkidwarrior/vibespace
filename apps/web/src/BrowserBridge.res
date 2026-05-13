@@ -5,6 +5,16 @@ type frameViewport = {
   viewportHeight: float,
 }
 
+type trustedPlayerFrame = {
+  key: string,
+  source: string,
+  title: string,
+  x: float,
+  y: float,
+  width: float,
+  height: float,
+}
+
 @module("./BrowserBridge.js") external attachSelectionBridgeRaw: (ReactEvent.Image.t, string, bool, ProfileSelection.payload => unit) => unit = "attachSelectionBridge"
 @module("./BrowserBridge.js") external debugPrompt: (string, string) => unit = "debugPrompt"
 @module("./BrowserBridge.js") external attachProfileLinkRouter: (
@@ -15,6 +25,10 @@ type frameViewport = {
   ReactEvent.Image.t,
   frameViewport => unit,
 ) => unit = "attachFrameViewportListener"
+@module("./BrowserBridge.js") external attachTrustedPlayerLayer: (
+  ReactEvent.Image.t,
+  array<trustedPlayerFrame> => unit,
+) => unit = "attachTrustedPlayerLayer"
 
 @get external eventTarget: ReactEvent.Form.t => {..} = "target"
 @get external targetValue: {..} => string = "value"

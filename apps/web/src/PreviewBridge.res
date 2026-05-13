@@ -36,110 +36,12 @@ let selectedIdToString = selectedId =>
   | None => ""
   }
 
-let escapeJsString = value =>
-  value
-  ->String.replaceAll("\\", "\\\\")
-  ->String.replaceAll("\"", "\\\"")
-  ->String.replaceAll("\n", "\\n")
-  ->String.replaceAll("\r", "\\r")
-
-let jsString = value => "\"" ++ value->escapeJsString ++ "\""
-
 let safeHttpsOrigin = value =>
   try {
     let url = value->makeUrl
     url->urlProtocol == "https:" ? Some(url->urlOrigin) : None
   } catch {
   | _ => None
-  }
-
-let firstInitial = value => value->String.trim->String.slice(~start=0, ~end=1)->String.toUpperCase
-
-let ownerInitials = displayName => {
-  let parts = displayName->String.trim->String.split(" ")->Array.filter(part => part != "")
-  let initials =
-    parts->Array.get(0)->Option.mapOr("", firstInitial) ++
-    parts->Array.get(1)->Option.mapOr("", firstInitial)
-
-  initials == "" ? "VS" : initials
-}
-
-let previewScriptNonce = "vibespace-preview"
-
-let trustedImageRuntimeScript =
-  "(() => {\n" ++
-  "  const mark = (image, state) => {\n" ++
-  "    const wrapper = image.closest('[data-vibespace-capability=\"trusted_image\"]');\n" ++
-  "    if (!wrapper) return;\n" ++
-  "    wrapper.setAttribute('data-vibespace-image-state', state);\n" ++
-  "  };\n" ++
-  "  document.querySelectorAll('[data-vibespace-trusted-image-img=\"true\"]').forEach((image) => {\n" ++
-  "    if (image.complete) {\n" ++
-  "      mark(image, image.naturalWidth > 0 && image.naturalHeight > 0 ? 'loaded' : 'broken');\n" ++
-  "    }\n" ++
-  "    image.addEventListener('load', () => mark(image, 'loaded'));\n" ++
-  "    image.addEventListener('error', () => mark(image, 'broken'));\n" ++
-  "  });\n" ++
-  "})();"
-
-let systemFriendsRuntimeScript =
-  "(() => {\n" ++
-  "  const friends = document.querySelector('[data-vibespace-system-component=\"invite-chain-friends\"]');\n" ++
-  "  const root = document.querySelector('[data-vibespace-id=\"profile-root\"]');\n" ++
-  "  if (friends && root && friends.parentElement !== root) root.appendChild(friends);\n" ++
-  "  if (!friends) return;\n" ++
-  "  friends.querySelectorAll('.vibespace-system-friends__avatar-img').forEach((image) => {\n" ++
-  "    const avatar = image.closest('.vibespace-system-friends__avatar');\n" ++
-  "    const markLoaded = () => avatar && avatar.setAttribute('data-vibespace-avatar-state', 'loaded');\n" ++
-  "    const fallback = () => {\n" ++
-  "      image.remove();\n" ++
-  "      if (avatar) avatar.setAttribute('data-vibespace-avatar-state', 'fallback');\n" ++
-  "    };\n" ++
-  "    if (image.complete) {\n" ++
-  "      image.naturalWidth > 0 && image.naturalHeight > 0 ? markLoaded() : fallback();\n" ++
-  "    }\n" ++
-  "    image.addEventListener('load', markLoaded);\n" ++
-  "    image.addEventListener('error', fallback);\n" ++
-  "  });\n" ++
-  "})();"
-
-let systemOwnerImageRuntimeScript = ownerImage =>
-  switch ownerImage {
-  | None => ""
-  | Some(ownerImage) =>
-    let displayName = ownerImage.displayName
-    let avatarUrl = ownerImage.avatarUrl->Option.getOr("")
-    let initials = displayName->ownerInitials
-
-    "(() => {\n" ++
-    "  const displayName = " ++ displayName->jsString ++ ";\n" ++
-    "  const avatarUrl = " ++ avatarUrl->jsString ++ ";\n" ++
-    "  const initials = " ++ initials->jsString ++ ";\n" ++
-    "  document.querySelectorAll('[data-vibespace-system-component=\"owner-profile-image\"]').forEach((slot) => {\n" ++
-    "    slot.classList.add('vibespace-system-owner-image');\n" ++
-    "    slot.setAttribute('data-vibespace-system-ready', 'true');\n" ++
-    "    const fallback = () => {\n" ++
-    "      slot.setAttribute('data-vibespace-owner-image-state', 'fallback');\n" ++
-    "      if (!slot.textContent.trim()) slot.textContent = initials;\n" ++
-    "    };\n" ++
-    "    if (!avatarUrl) {\n" ++
-    "      fallback();\n" ++
-    "      return;\n" ++
-    "    }\n" ++
-    "    const image = document.createElement('img');\n" ++
-    "    image.className = 'vibespace-system-owner-image__img';\n" ++
-    "    image.src = avatarUrl;\n" ++
-    "    image.alt = displayName ? `${displayName} profile image` : 'Profile image';\n" ++
-    "    image.loading = 'lazy';\n" ++
-    "    image.decoding = 'async';\n" ++
-    "    image.addEventListener('load', () => slot.setAttribute('data-vibespace-owner-image-state', 'loaded'));\n" ++
-    "    image.addEventListener('error', () => {\n" ++
-    "      image.remove();\n" ++
-    "      fallback();\n" ++
-    "    });\n" ++
-    "    slot.replaceChildren(image);\n" ++
-    "  });\n" ++
-    "})();"
   }
 
 let systemFriendsCss =
@@ -263,9 +165,7 @@ let buildPreviewDocument = (
   ownerImage->ownerImageCspSource ++
   "; frame-src " ++
   WebCapabilities.trustedFrameCspSourceList ++
-  "; base-uri 'none'; form-action 'none'; connect-src 'none'; media-src 'none'; font-src 'none'; script-src 'nonce-" ++
-  previewScriptNonce ++
-  "';\" />\n" ++
+  "; base-uri 'none'; form-action 'none'; connect-src 'none'; media-src 'none'; font-src 'none'; script-src 'none';\" />\n" ++
   "  <style>\n" ++
   "    " ++ css->CssSource.toString ++ "\n" ++
   "    " ++ WebCapabilities.webCapabilityCss() ++ "\n" ++
@@ -279,11 +179,6 @@ let buildPreviewDocument = (
   selectedId ++ "\">\n" ++
   expandedHtml ++ "\n" ++
   friendsList->systemFriendsHtml ++
-  "<script nonce=\"" ++ previewScriptNonce ++ "\">\n" ++
-  trustedImageRuntimeScript ++ "\n" ++
-  systemFriendsRuntimeScript ++ "\n" ++
-  ownerImage->systemOwnerImageRuntimeScript ++ "\n" ++
-  "</script>\n" ++
   "</body>\n" ++
   "</html>"
 }

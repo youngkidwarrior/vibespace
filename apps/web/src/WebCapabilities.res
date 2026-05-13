@@ -204,6 +204,45 @@ let webCapabilityCss = () => "
       background: transparent;
     }
 
+    .vibespace-trusted-frame-fallback {
+      display: grid;
+      align-content: center;
+      gap: 8px;
+      min-height: 180px;
+      border-radius: inherit;
+      border: 1px solid rgba(255, 255, 255, .2);
+      padding: 18px;
+      background:
+        linear-gradient(135deg, rgba(20, 20, 20, .92), rgba(36, 36, 36, .86)),
+        repeating-linear-gradient(45deg, rgba(255, 255, 255, .06) 0 10px, rgba(255, 255, 255, .02) 10px 20px);
+      color: #f8f8f2;
+    }
+
+    .vibespace-trusted-frame-fallback-kicker {
+      width: max-content;
+      max-width: 100%;
+      border: 1px solid rgba(255, 255, 255, .24);
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: rgba(255, 255, 255, .08);
+      font: 700 10px/1.2 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .vibespace-trusted-frame-fallback-title {
+      margin: 0;
+      font: 800 clamp(18px, 4vw, 28px)/1.05 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0;
+    }
+
+    .vibespace-trusted-frame-fallback-copy {
+      max-width: 46ch;
+      margin: 0;
+      font: 500 13px/1.45 ui-sans-serif, system-ui, sans-serif;
+      color: rgba(248, 248, 242, .78);
+    }
+
     .vibespace-trusted-image {
       min-width: 0;
     }
@@ -445,39 +484,48 @@ let expandWebCapabilityPlaceholders = html =>
             ->sanitizeTextValue(~maxLength=220)
 
           if friendlyName != "" && friendlyDescription != "" {
-            let iframe = Document.createElement(DomGlobal.document, "iframe")
+            let fallback = Document.createElement(DomGlobal.document, "div")
             Element.setAttribute(
-              iframe,
+              fallback,
               ~qualifiedName="class",
-              ~value="vibespace-trusted-frame-frame vibespace-web-embed-frame",
+              ~value="vibespace-trusted-frame-fallback",
             )
-            Element.setAttribute(iframe, ~qualifiedName="src", ~value=match.url.href)
-            Element.setAttribute(iframe, ~qualifiedName="title", ~value=friendlyName)
-            Element.setAttribute(iframe, ~qualifiedName="height", ~value=match.config.defaultHeight)
-            Element.setAttribute(iframe, ~qualifiedName="loading", ~value="lazy")
-            Element.setAttribute(
-              iframe,
-              ~qualifiedName="referrerpolicy",
-              ~value="strict-origin-when-cross-origin",
-            )
-            Element.setAttribute(iframe, ~qualifiedName="allowfullscreen", ~value="")
 
-            let allowValue = supportedIframeAllowValue([
-              "autoplay",
-              "encrypted-media",
-              "fullscreen",
-              "picture-in-picture",
-            ])
-            if allowValue != "" {
-              Element.setAttribute(iframe, ~qualifiedName="allow", ~value=allowValue)
-            }
+            let fallbackKicker = Document.createElement(DomGlobal.document, "span")
+            Element.setAttribute(
+              fallbackKicker,
+              ~qualifiedName="class",
+              ~value="vibespace-trusted-frame-fallback-kicker",
+            )
+            Element.append2(fallbackKicker, "Vibespace media")
+
+            let fallbackTitle = Document.createElement(DomGlobal.document, "strong")
+            Element.setAttribute(
+              fallbackTitle,
+              ~qualifiedName="class",
+              ~value="vibespace-trusted-frame-fallback-title",
+            )
+            Element.append2(fallbackTitle, friendlyName)
+
+            let fallbackCopy = Document.createElement(DomGlobal.document, "p")
+            Element.setAttribute(
+              fallbackCopy,
+              ~qualifiedName="class",
+              ~value="vibespace-trusted-frame-fallback-copy",
+            )
+            Element.append2(fallbackCopy, friendlyDescription)
+
+            Element.append(fallback, fallbackKicker->Element.asNode)
+            Element.append(fallback, fallbackTitle->Element.asNode)
+            Element.append(fallback, fallbackCopy->Element.asNode)
 
             appendClass(
               node,
               "vibespace-trusted-frame vibespace-web-embed vibespace-trusted-frame--" ++
               match.origin->classSlug,
             )
-            Element.replaceChildren(node, iframe->Element.asNode)
+            Element.setAttribute(node, ~qualifiedName="data-vibespace-player-state", ~value="fallback")
+            Element.replaceChildren(node, fallback->Element.asNode)
           }
         }
       }
