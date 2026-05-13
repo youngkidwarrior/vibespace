@@ -54,6 +54,30 @@ type editorContext = {
   ownerProfileImage: option<ownerProfileImageSnapshot>,
 }
 
+type editorState = {
+  document: ProfileDocument.t,
+  lastValidDocument: ProfileDocument.t,
+  documentValidation: documentValidationState,
+  selection: ProfileSelection.t,
+  frameViewport: BrowserBridge.frameViewport,
+  isEditing: bool,
+  promptHistory: array<PromptHistory.item>,
+  currentProfileVersionId: option<string>,
+  profileVersionHistory: array<profileVersionSnapshot>,
+  profileEditSessionHistory: array<profileEditSessionSnapshot>,
+  viewerSnapshot: option<viewerSnapshot>,
+  availableInvite: option<inviteSnapshot>,
+  viewerUsedInvite: option<inviteSnapshot>,
+  reactivateInviteConfirmOpen: bool,
+  documentNotice: option<string>,
+}
+
+type promptUiState = {
+  promptDrafts: array<PromptDrafts.item>,
+  activePromptId: option<PromptDraftId.t>,
+  historyOpen: bool,
+}
+
 type historyEntry =
   | DraftEntry(PromptDrafts.item)
   | BackendRequestEntry(profileEditSessionSnapshot)
@@ -74,6 +98,249 @@ let fixtureEditorContext = {
 }
 
 let inviteLinkForCode = code => DomGlobal.origin ++ "/invite/" ++ encodeURIComponent(code)
+
+let defaultFrameViewport: BrowserBridge.frameViewport = {
+  scrollX: 0.0,
+  scrollY: 0.0,
+  viewportWidth: 0.0,
+  viewportHeight: 0.0,
+}
+
+let initialEditorState = (editorContext: editorContext): editorState => {
+  document: editorContext.initialDocument,
+  lastValidDocument: editorContext.initialDocument,
+  documentValidation: ValidationValid,
+  selection: ProfileSelection.empty,
+  frameViewport: defaultFrameViewport,
+  isEditing: false,
+  promptHistory: PromptHistory.load(),
+  currentProfileVersionId: editorContext.currentVersionId,
+  profileVersionHistory: editorContext.versionHistory,
+  profileEditSessionHistory: editorContext.editSessions,
+  viewerSnapshot: editorContext.viewer,
+  availableInvite: editorContext.availableInvite,
+  viewerUsedInvite: editorContext.viewerUsedInvite,
+  reactivateInviteConfirmOpen: false,
+  documentNotice: None,
+}
+
+let initialPromptUiState = (): promptUiState => {
+  promptDrafts: PromptDrafts.load(),
+  activePromptId: None,
+  historyOpen: false,
+}
+
+type editorAction =
+  | EditorContextReset(editorContext)
+  | EditModeOpened
+  | EditModeCleared
+  | DocumentSet(ProfileDocument.t => ProfileDocument.t)
+  | LastValidDocumentSet(ProfileDocument.t => ProfileDocument.t)
+  | DocumentValidationSet(documentValidationState)
+  | SelectionSet(ProfileSelection.t)
+  | FrameViewportSet(BrowserBridge.frameViewport)
+  | PromptHistorySet(array<PromptHistory.item> => array<PromptHistory.item>)
+  | CurrentProfileVersionIdSet(option<string>)
+  | ProfileVersionHistorySet(array<profileVersionSnapshot> => array<profileVersionSnapshot>)
+  | ProfileEditSessionHistorySet(array<profileEditSessionSnapshot> => array<profileEditSessionSnapshot>)
+  | ViewerSnapshotSet(option<viewerSnapshot> => option<viewerSnapshot>)
+  | AvailableInviteSet(option<inviteSnapshot>)
+  | ViewerUsedInviteSet(option<inviteSnapshot> => option<inviteSnapshot>)
+  | ReactivateInviteConfirmOpenSet(bool)
+  | NoticeSet(option<string>)
+  | ProfileVersionApplied({document: ProfileDocument.t, snapshot: profileVersionSnapshot, notice: option<string>})
+  | InviteReactivationSucceeded({viewer: viewerSnapshot, invite: inviteSnapshot, notice: string})
+
+type promptUiAction =
+  | PromptDraftsSet(array<PromptDrafts.item> => array<PromptDrafts.item>)
+  | ActivePromptIdSet(option<PromptDraftId.t>)
+  | HistoryOpenSet(bool)
+  | HistoryToggled
+  | SelectionAccepted({
+      draftId: PromptDraftId.t,
+      nextSelection: ProfileSelection.t,
+      previousActivePromptId: option<PromptDraftId.t>,
+      anchor: ProfileGeometry.anchor,
+      now: IsoTimestamp.t,
+    })
+  | DraftActivated(PromptDraftId.t, option<PromptDraftId.t>, IsoTimestamp.t)
+  | DraftMinimized(PromptDraftId.t, bool, IsoTimestamp.t)
+  | DraftClosed({draftId: PromptDraftId.t, draftWasEmpty: bool, now: IsoTimestamp.t})
+  | DraftDeleted(PromptDraftId.t)
+  | DraftSubmitting(PromptDraftId.t, IsoTimestamp.t)
+  | DraftProgressChanged(PromptDraftId.t, PromptDrafts.progressPhase, IsoTimestamp.t)
+  | DraftFailed(PromptDraftId.t, string, IsoTimestamp.t)
+  | DraftApplied(PromptDraftId.t, string, IsoTimestamp.t)
+
+let upsertProfileVersionSnapshot = (
+  history: array<profileVersionSnapshot>,
+  snapshot: profileVersionSnapshot,
+): array<profileVersionSnapshot> => [
+  snapshot,
+  ...history->Array.filter(version => version.id != snapshot.id),
+]
+
+let upsertProfileEditSessionSnapshot = (
+  history: array<profileEditSessionSnapshot>,
+  snapshot: profileEditSessionSnapshot,
+): array<profileEditSessionSnapshot> => [
+  snapshot,
+  ...history->Array.filter(session => session.id != snapshot.id),
+]
+
+let editorReducer = (state, action) =>
+  switch action {
+  | EditorContextReset(editorContext) => {
+      ...state,
+      document: editorContext.initialDocument,
+      lastValidDocument: editorContext.initialDocument,
+      documentValidation: ValidationValid,
+      selection: ProfileSelection.empty,
+      isEditing: false,
+      currentProfileVersionId: editorContext.currentVersionId,
+      profileVersionHistory: editorContext.versionHistory,
+      profileEditSessionHistory: editorContext.editSessions,
+      viewerSnapshot: editorContext.viewer,
+      availableInvite: editorContext.availableInvite,
+      viewerUsedInvite: editorContext.viewerUsedInvite,
+      reactivateInviteConfirmOpen: false,
+      documentNotice: None,
+    }
+  | EditModeOpened => {...state, isEditing: true}
+  | EditModeCleared => {
+      ...state,
+      isEditing: false,
+      selection: ProfileSelection.empty,
+    }
+  | DocumentSet(setter) => {...state, document: setter(state.document)}
+  | LastValidDocumentSet(setter) => {...state, lastValidDocument: setter(state.lastValidDocument)}
+  | DocumentValidationSet(documentValidation) => {...state, documentValidation}
+  | SelectionSet(selection) => {...state, selection}
+  | FrameViewportSet(frameViewport) => {...state, frameViewport}
+  | PromptHistorySet(setter) => {...state, promptHistory: setter(state.promptHistory)}
+  | CurrentProfileVersionIdSet(currentProfileVersionId) => {...state, currentProfileVersionId}
+  | ProfileVersionHistorySet(setter) => {
+      ...state,
+      profileVersionHistory: setter(state.profileVersionHistory),
+    }
+  | ProfileEditSessionHistorySet(setter) => {
+      ...state,
+      profileEditSessionHistory: setter(state.profileEditSessionHistory),
+    }
+  | ViewerSnapshotSet(setter) => {...state, viewerSnapshot: setter(state.viewerSnapshot)}
+  | AvailableInviteSet(availableInvite) => {...state, availableInvite}
+  | ViewerUsedInviteSet(setter) => {...state, viewerUsedInvite: setter(state.viewerUsedInvite)}
+  | ReactivateInviteConfirmOpenSet(reactivateInviteConfirmOpen) => {
+      ...state,
+      reactivateInviteConfirmOpen,
+    }
+  | NoticeSet(documentNotice) => {...state, documentNotice}
+  | ProfileVersionApplied({document, snapshot, notice}) => {
+      ...state,
+      document,
+      lastValidDocument: document,
+      documentValidation: ValidationValid,
+      selection: ProfileSelection.empty,
+      currentProfileVersionId: Some(snapshot.id),
+      profileVersionHistory: state.profileVersionHistory->upsertProfileVersionSnapshot(snapshot),
+      documentNotice: notice,
+    }
+  | InviteReactivationSucceeded({viewer, invite, notice}) => {
+      ...state,
+      viewerSnapshot: Some(viewer),
+      availableInvite: None,
+      viewerUsedInvite: Some(invite),
+      reactivateInviteConfirmOpen: false,
+      documentNotice: Some(notice),
+    }
+  }
+
+let promptUiReducer = (state, action) =>
+  switch action {
+  | PromptDraftsSet(setter) => {...state, promptDrafts: setter(state.promptDrafts)}
+  | ActivePromptIdSet(activePromptId) => {...state, activePromptId}
+  | HistoryOpenSet(historyOpen) => {...state, historyOpen}
+  | HistoryToggled => {...state, historyOpen: !state.historyOpen}
+  | SelectionAccepted({draftId, nextSelection, previousActivePromptId, anchor, now}) =>
+    let promptDrafts = switch previousActivePromptId {
+    | Some(activeId) if !PromptDraftId.equals(activeId, draftId) =>
+      switch PromptDrafts.findById(state.promptDrafts, activeId) {
+      | Some(activeDraft) if activeDraft->PromptDrafts.isEmptyDraft =>
+        PromptDrafts.removeById(state.promptDrafts, activeId)
+      | Some(_) | None => PromptDrafts.setMinimized(state.promptDrafts, activeId, true, now)
+      }
+    | Some(_) | None => state.promptDrafts
+    }
+    let promptDrafts = PromptDrafts.upsertSelection(
+      promptDrafts,
+      ~id=draftId,
+      ~selectionKind=ProfileSelection.kind(nextSelection),
+      ~selectionLabel=ProfileSelection.label(nextSelection),
+      ~selectionSnapshot=ProfileSelection.agentContext(nextSelection),
+      ~selectedRegionScreenshotDataUrl=ProfileSelection.screenshotDataUrl(nextSelection),
+      ~anchor,
+      ~now,
+    )
+    {
+      ...state,
+      promptDrafts: PromptDrafts.setMinimized(promptDrafts, draftId, false, now),
+      activePromptId: Some(draftId),
+    }
+  | DraftActivated(draftId, previousActivePromptId, now) =>
+    let promptDrafts = switch previousActivePromptId {
+    | Some(activeId) if !PromptDraftId.equals(activeId, draftId) =>
+      switch PromptDrafts.findById(state.promptDrafts, activeId) {
+      | Some(activeDraft) if activeDraft->PromptDrafts.isEmptyDraft =>
+        PromptDrafts.removeById(state.promptDrafts, activeId)
+      | Some(_) | None => PromptDrafts.setMinimized(state.promptDrafts, activeId, true, now)
+      }
+    | Some(_) | None => state.promptDrafts
+    }
+    {
+      promptDrafts: PromptDrafts.setMinimized(promptDrafts, draftId, false, now),
+      activePromptId: Some(draftId),
+      historyOpen: false,
+    }
+  | DraftMinimized(draftId, minimized, now) => {
+      ...state,
+      promptDrafts: PromptDrafts.setMinimized(state.promptDrafts, draftId, minimized, now),
+      activePromptId: switch state.activePromptId {
+      | Some(activeId) if minimized && PromptDraftId.equals(activeId, draftId) => None
+      | activePromptId => activePromptId
+      },
+    }
+  | DraftClosed({draftId, draftWasEmpty, now}) => {
+      promptDrafts: draftWasEmpty
+        ? PromptDrafts.removeById(state.promptDrafts, draftId)
+        : PromptDrafts.markTouched(state.promptDrafts, draftId, now),
+      activePromptId: None,
+      historyOpen: !draftWasEmpty,
+    }
+  | DraftDeleted(draftId) => {
+      ...state,
+      promptDrafts: PromptDrafts.removeById(state.promptDrafts, draftId),
+      activePromptId: switch state.activePromptId {
+      | Some(activeId) if PromptDraftId.equals(activeId, draftId) => None
+      | activePromptId => activePromptId
+      },
+    }
+  | DraftSubmitting(draftId, now) => {
+      ...state,
+      promptDrafts: PromptDrafts.markSubmitting(state.promptDrafts, draftId, now),
+    }
+  | DraftProgressChanged(draftId, phase, now) => {
+      ...state,
+      promptDrafts: PromptDrafts.markSubmittingPhase(state.promptDrafts, draftId, phase, now),
+    }
+  | DraftFailed(draftId, message, now) => {
+      ...state,
+      promptDrafts: PromptDrafts.markError(state.promptDrafts, draftId, message, now),
+    }
+  | DraftApplied(draftId, summary, now) => {
+      ...state,
+      promptDrafts: PromptDrafts.markApplied(state.promptDrafts, draftId, summary, now),
+    }
+  }
 
 @react.component
 let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
@@ -247,31 +514,49 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     | None => "none"
     }
 
-  let (document, setDocument) = React.useState(() => initialDocument)
-  let (lastValidDocument, setLastValidDocument) = React.useState(() => initialDocument)
-  let (documentValidation, setDocumentValidation) = React.useState(() => ValidationValid)
-  let (selection, setSelection) = React.useState(() => ProfileSelection.empty)
-  let (frameViewport, setFrameViewport) = React.useState((): BrowserBridge.frameViewport => {
-    scrollX: 0.0,
-    scrollY: 0.0,
-    viewportWidth: 0.0,
-    viewportHeight: 0.0,
-  })
-  let (isEditing, setIsEditing) = React.useState(() => false)
-  let (historyOpen, setHistoryOpen) = React.useState(() => false)
-  let (promptHistory, setPromptHistory) = React.useState(() => PromptHistory.load())
-  let (currentProfileVersionId, setCurrentProfileVersionId) = React.useState(() => editorContext.currentVersionId)
-  let (profileVersionHistory, setProfileVersionHistory) = React.useState(() => editorContext.versionHistory)
-  let (profileEditSessionHistory, setProfileEditSessionHistory) = React.useState(() => editorContext.editSessions)
-  let (viewerSnapshot, setViewerSnapshot) = React.useState(() => editorContext.viewer)
-  let (availableInvite, setAvailableInvite) = React.useState(() => editorContext.availableInvite)
-  let (viewerUsedInvite, setViewerUsedInvite) = React.useState(() => editorContext.viewerUsedInvite)
-  let (reactivateInviteConfirmOpen, setReactivateInviteConfirmOpen) = React.useState(() => false)
-  // TODO: Support multiple simultaneous prompt bubbles anchored to different selections.
-  // TODO: Promote activePromptDraft into an array of open prompt drafts with independent minimized/focused state.
-  let (promptDrafts, setPromptDrafts) = React.useState(() => PromptDrafts.load())
-  let (activePromptId, setActivePromptId) = React.useState(() => None)
-  let (documentNotice, setDocumentNotice) = React.useState(() => None)
+  let (editorState, editorDispatch) = React.useReducerWithMapState(
+    editorReducer,
+    editorContext,
+    initialEditorState,
+  )
+  let (promptUiState, promptUiDispatch) = React.useReducerWithMapState(
+    promptUiReducer,
+    (),
+    initialPromptUiState,
+  )
+  let document = editorState.document
+  let lastValidDocument = editorState.lastValidDocument
+  let documentValidation = editorState.documentValidation
+  let selection = editorState.selection
+  let frameViewport = editorState.frameViewport
+  let isEditing = editorState.isEditing
+  let promptHistory = editorState.promptHistory
+  let currentProfileVersionId = editorState.currentProfileVersionId
+  let profileVersionHistory = editorState.profileVersionHistory
+  let profileEditSessionHistory = editorState.profileEditSessionHistory
+  let viewerSnapshot = editorState.viewerSnapshot
+  let availableInvite = editorState.availableInvite
+  let viewerUsedInvite = editorState.viewerUsedInvite
+  let reactivateInviteConfirmOpen = editorState.reactivateInviteConfirmOpen
+  let documentNotice = editorState.documentNotice
+  let promptDrafts = promptUiState.promptDrafts
+  let activePromptId = promptUiState.activePromptId
+  let historyOpen = promptUiState.historyOpen
+  let setDocument = setter => editorDispatch(DocumentSet(setter))
+  let setLastValidDocument = setter => editorDispatch(LastValidDocumentSet(setter))
+  let setDocumentValidation = setter => editorDispatch(DocumentValidationSet(setter(documentValidation)))
+  let setSelection = setter => editorDispatch(SelectionSet(setter(selection)))
+  let setFrameViewport = setter => editorDispatch(FrameViewportSet(setter(frameViewport)))
+  let setIsEditing = setter => editorDispatch(setter(isEditing) ? EditModeOpened : EditModeCleared)
+  let setHistoryOpen = setter => promptUiDispatch(HistoryOpenSet(setter(historyOpen)))
+  let setPromptHistory = setter => editorDispatch(PromptHistorySet(setter))
+  let setProfileEditSessionHistory = setter => editorDispatch(ProfileEditSessionHistorySet(setter))
+  let setReactivateInviteConfirmOpen = setter =>
+    editorDispatch(ReactivateInviteConfirmOpenSet(setter(reactivateInviteConfirmOpen)))
+  let setPromptDrafts = setter => promptUiDispatch(PromptDraftsSet(setter))
+  let setActivePromptId = setter => promptUiDispatch(ActivePromptIdSet(setter(activePromptId)))
+  let setDocumentNotice = setter => editorDispatch(NoticeSet(setter(documentNotice)))
+  let (trustedPlayerFrames, setTrustedPlayerFrames) = React.useState((): array<BrowserBridge.trustedPlayerFrame> => [])
   let latestValidationRevision = React.useRef(ProfileDocument.revisionString(initialDocument))
   let knownValidRevision = React.useRef(ProfileDocument.revisionString(initialDocument))
   let skippedInitialValidation = React.useRef(false)
@@ -280,21 +565,9 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     let revision = ProfileDocument.revisionString(initialDocument)
     latestValidationRevision.current = revision
     knownValidRevision.current = revision
-    setDocument(_ => initialDocument)
-    setLastValidDocument(_ => initialDocument)
-    setDocumentValidation(_ => ValidationValid)
-    setDocumentNotice(_ => None)
-    setCurrentProfileVersionId(_ => editorContext.currentVersionId)
-    setProfileVersionHistory(_ => editorContext.versionHistory)
-    setProfileEditSessionHistory(_ => editorContext.editSessions)
-    setViewerSnapshot(_ => editorContext.viewer)
-    setAvailableInvite(_ => editorContext.availableInvite)
-    setViewerUsedInvite(_ => editorContext.viewerUsedInvite)
-    setReactivateInviteConfirmOpen(_ => false)
-    setIsEditing(_ => false)
-    setSelection(_ => ProfileSelection.empty)
-    setHistoryOpen(_ => false)
-    setActivePromptId(_ => None)
+    editorDispatch(EditorContextReset(editorContext))
+    promptUiDispatch(HistoryOpenSet(false))
+    promptUiDispatch(ActivePromptIdSet(None))
     None
   }, [editorContextKey])
 
@@ -342,35 +615,13 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     updatedAt,
   }
 
-  let upsertProfileVersionSnapshot = (
-    history: array<profileVersionSnapshot>,
-    snapshot: profileVersionSnapshot,
-  ): array<profileVersionSnapshot> => [
-    snapshot,
-    ...history->Array.filter(version => version.id != snapshot.id),
-  ]
-
-  let upsertProfileEditSessionSnapshot = (
-    history: array<profileEditSessionSnapshot>,
-    snapshot: profileEditSessionSnapshot,
-  ): array<profileEditSessionSnapshot> => [
-    snapshot,
-    ...history->Array.filter(session => session.id != snapshot.id),
-  ]
-
   let applyProfileVersionSnapshot = (snapshot: profileVersionSnapshot, ~notice: string) => {
     let nextDocument = ProfileDocument.replace(document, snapshot.html, snapshot.css)
     let nextRevision = ProfileDocument.revisionString(nextDocument)
     latestValidationRevision.current = nextRevision
     knownValidRevision.current = nextRevision
-    setDocument(_ => nextDocument)
-    setLastValidDocument(_ => nextDocument)
-    setDocumentValidation(_ => ValidationValid)
-    setSelection(_ => ProfileSelection.empty)
-    setActivePromptId(_ => None)
-    setCurrentProfileVersionId(_ => Some(snapshot.id))
-    setProfileVersionHistory(current => current->upsertProfileVersionSnapshot(snapshot))
-    setDocumentNotice(_ => Some(notice))
+    editorDispatch(ProfileVersionApplied({document: nextDocument, snapshot, notice: Some(notice)}))
+    promptUiDispatch(ActivePromptIdSet(None))
   }
 
   let restoreBackendVersion = (snapshot: profileVersionSnapshot) => {
@@ -525,6 +776,33 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     }
   }
   let svgTrustSummary = ProfileDocument.html(document)->ProfileValidation.svgTrust
+  let renderTrustedPlayerLayer = () =>
+    trustedPlayerFrames->Array.length == 0
+      ? React.null
+      : <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+          {trustedPlayerFrames
+          ->Array.map(frame =>
+            <iframe
+              key={frame.key}
+              className={isEditing
+                ? "pointer-events-none absolute block border-0 bg-black"
+                : "pointer-events-auto absolute block border-0 bg-black"}
+              title={frame.title}
+              src={frame.source}
+              loading=#lazy
+              allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+              allowFullScreen=true
+              referrerPolicy="strict-origin-when-cross-origin"
+              style={{
+                left: frame.x->Float.toString ++ "px",
+                top: frame.y->Float.toString ++ "px",
+                width: frame.width->Float.toString ++ "px",
+                height: frame.height->Float.toString ++ "px",
+              }}
+            />
+          )
+          ->React.array}
+        </div>
   let renderSvgTrustBadges = () => {
     <>
       {svgTrustSummary.knownCount > 0
@@ -725,31 +1003,13 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
       if shouldAccept {
         let now = Now.nowIso()
         setSelection(_ => nextSelection)
-        setActivePromptId(_ => Some(draftId))
-        setPromptDrafts(current =>
-          {
-            let current = switch latestActivePromptId {
-            | Some(activeId) if !PromptDraftId.equals(activeId, draftId) =>
-              switch PromptDrafts.findById(current, activeId) {
-              | Some(activeDraft) if activeDraft->PromptDrafts.isEmptyDraft =>
-                PromptDrafts.removeById(current, activeId)
-              | Some(_) | None => PromptDrafts.setMinimized(current, activeId, true, now)
-              }
-            | Some(_) | None => current
-            }
-            let current = PromptDrafts.upsertSelection(
-              current,
-              ~id=draftId,
-              ~selectionKind=ProfileSelection.kind(nextSelection),
-              ~selectionLabel=ProfileSelection.label(nextSelection),
-              ~selectionSnapshot=ProfileSelection.agentContext(nextSelection),
-              ~selectedRegionScreenshotDataUrl=ProfileSelection.screenshotDataUrl(nextSelection),
-              ~anchor,
-              ~now,
-            )
-            PromptDrafts.setMinimized(current, draftId, false, now)
-          }
-        )
+        promptUiDispatch(SelectionAccepted({
+          draftId,
+          nextSelection,
+          previousActivePromptId: latestActivePromptId,
+          anchor,
+          now,
+        }))
       }
     | (None, _) | (_, None) =>
       BrowserBridge.debugPrompt(
@@ -763,36 +1023,13 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     setPromptDrafts(current => PromptDrafts.updatePrompt(current, draftId, nextPrompt, Now.nowIso()))
   }
 
-  let setDraftMinimized = (draftId, minimized) => {
-    setPromptDrafts(current => PromptDrafts.setMinimized(current, draftId, minimized, Now.nowIso()))
-  }
-
   let activateDraft = draftId => {
     let now = Now.nowIso()
-    setPromptDrafts(current =>
-      {
-        let current = switch activePromptId {
-        | Some(activeId) if !PromptDraftId.equals(activeId, draftId) =>
-          switch PromptDrafts.findById(current, activeId) {
-          | Some(activeDraft) if activeDraft->PromptDrafts.isEmptyDraft =>
-            PromptDrafts.removeById(current, activeId)
-          | Some(_) | None => PromptDrafts.setMinimized(current, activeId, true, now)
-          }
-        | Some(_) | None => current
-        }
-        PromptDrafts.setMinimized(current, draftId, false, now)
-      }
-    )
-    setActivePromptId(_ => Some(draftId))
-    setHistoryOpen(_ => false)
+    promptUiDispatch(DraftActivated(draftId, activePromptId, now))
   }
 
   let minimizeDraft = draftId => {
-    setDraftMinimized(draftId, true)
-    switch activePromptId {
-    | Some(activeId) if PromptDraftId.equals(activeId, draftId) => setActivePromptId(_ => None)
-    | Some(_) | None => ()
-    }
+    promptUiDispatch(DraftMinimized(draftId, true, Now.nowIso()))
   }
 
   let assistantModeInput = (mode: CodexChat.mode): RelaySchemaAssets_graphql.enum_AssistantEditMode_input =>
@@ -840,15 +1077,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
       " historyAfter=" ++
       (!draftWasEmpty)->debugBool,
     )
-    setPromptDrafts(current =>
-      if draftWasEmpty {
-        current->PromptDrafts.removeById(draftId)
-      } else {
-        PromptDrafts.markTouched(current, draftId, Now.nowIso())
-      }
-    )
-    setActivePromptId(_ => None)
-    setHistoryOpen(_ => !draftWasEmpty)
+    promptUiDispatch(DraftClosed({draftId, draftWasEmpty, now: Now.nowIso()}))
     BrowserBridge.debugPrompt(
       "close-draft-dispatched",
       "draftId=" ++ draftId->debugPromptDraftId ++ " activeAfter=none",
@@ -857,11 +1086,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
 
   let deleteDraft = draftId => {
     BrowserBridge.debugPrompt("history-delete-draft", "draftId=" ++ draftId->debugPromptDraftId)
-    setPromptDrafts(current => current->PromptDrafts.removeById(draftId))
-    switch activePromptId {
-    | Some(activeId) if PromptDraftId.equals(activeId, draftId) => setActivePromptId(_ => None)
-    | Some(_) | None => ()
-    }
+    promptUiDispatch(DraftDeleted(draftId))
   }
 
   let submitDraftToAssistant = (draft: PromptDrafts.item) => {
@@ -869,8 +1094,8 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     if instruction != "" {
       let submittedAt = Now.nowIso()
       let failDraft = message =>
-        setPromptDrafts(current => PromptDrafts.markError(current, draft.id, message, Now.nowIso()))
-      setPromptDrafts(current => PromptDrafts.markSubmitting(current, draft.id, submittedAt))
+        promptUiDispatch(DraftFailed(draft.id, message, Now.nowIso()))
+      promptUiDispatch(DraftSubmitting(draft.id, submittedAt))
       switch editorContext.profileId {
       | Some(profileId) =>
         let (
@@ -974,14 +1199,11 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
                         )
                       ),
                     onProgress: phase =>
-                      setPromptDrafts(current =>
-                        PromptDrafts.markSubmittingPhase(
-                          current,
-                          draft.id,
-                          phase->AgentEditTracker.promptProgressPhaseFromRelay,
-                          Now.nowIso(),
-                        )
-                      ),
+                      promptUiDispatch(DraftProgressChanged(
+                        draft.id,
+                        phase->AgentEditTracker.promptProgressPhaseFromRelay,
+                        Now.nowIso(),
+                      )),
                     onApplied: (session, version) => {
                       let snapshot = profileVersionSnapshot(
                         ~id=version.id,
@@ -996,9 +1218,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
                       let appliedSummary = session.summary->String.trim == ""
                         ? "Applied assistant changes."
                         : session.summary
-                      setPromptDrafts(current =>
-                        PromptDrafts.markApplied(current, draft.id, appliedSummary, completedAt)
-                      )
+                      promptUiDispatch(DraftApplied(draft.id, appliedSummary, completedAt))
                       setPromptHistory(current => [
                         PromptHistory.makeItem(
                           ~prompt=instruction->PromptText.make,
@@ -1018,9 +1238,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
                     },
                     onFailed: message => {
                       setDocumentNotice(_ => Some("Assistant request failed: " ++ message))
-                      setPromptDrafts(current =>
-                        PromptDrafts.markError(current, draft.id, message, Now.nowIso())
-                      )
+                      promptUiDispatch(DraftFailed(draft.id, message, Now.nowIso()))
                     },
                   })
                 }
@@ -1346,26 +1564,20 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
           | ReactivateUsedInviteSucceeded(payload) =>
             let user = payload.user
             let invite = payload.invite
-            setViewerSnapshot(_ =>
-              Some({
+            editorDispatch(InviteReactivationSucceeded({
+              viewer: {
                 id: user.id,
                 status: user.status->ProfileRelayLabels.userStatus,
-              })
-            )
-            setAvailableInvite(_ => None)
-            setViewerUsedInvite(_ =>
-              Some({
+              },
+              invite: {
                 id: invite.id,
                 code: invite.code,
                 status: invite.status->ProfileRelayLabels.inviteStatus,
                 redeemedAt: invite.redeemedAt,
-              })
-            )
-            setReactivateInviteConfirmOpen(_ => false)
+              },
+              notice: "Your account is disabled. The invite code you used is available again.",
+            }))
             setInviteModalOpen(false)
-            setDocumentNotice(_ =>
-              Some("Your account is disabled. The invite code you used is available again.")
-            )
           | UnselectedUnionMember(_) =>
             setDocumentNotice(_ => Some("Invite reactivation returned an unknown result."))
           }
@@ -1749,7 +1961,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
                 size=Lg
                 type_="button"
                 title={historyOpen ? "Hide history" : "View history"}
-                onClick={_ => setHistoryOpen(current => !current)}>
+                onClick={_ => promptUiDispatch(HistoryToggled)}>
                 {React.string("History")}
               </Button>
             : React.null}
@@ -1783,7 +1995,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
           className={selectionInteractionEnabled
             ? "block h-full w-full cursor-crosshair border-0 bg-white"
             : "block h-full w-full border-0 bg-white"}
-          sandbox="allow-same-origin allow-scripts allow-popups allow-presentation"
+          sandbox="allow-same-origin allow-popups allow-presentation"
           srcDoc=canvasPreview
           onLoad={event => {
             let bridgeEditMode = isEditing && documentIsValid
@@ -1802,6 +2014,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
               setFrameViewport(_ => nextViewport)
             )
             BrowserBridge.attachProfileLinkRouter(event, routeProfileFrameLink)
+            BrowserBridge.attachTrustedPlayerLayer(event, frames => setTrustedPlayerFrames(_ => frames))
             BrowserBridge.attachSelectionBridge(
               event,
               selectedId,
@@ -1810,6 +2023,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
             )
           }}
         />
+        {renderTrustedPlayerLayer()}
         {selectionInteractionEnabled && !ProfileSelection.hasSelection(selection)
           ? <Alert className="absolute bottom-6 left-1/2 z-20 w-[min(520px,calc(100vw-32px))] -translate-x-1/2 text-center">
               <Alert.Description>
@@ -1865,7 +2079,7 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
             <iframe
               title="Vibespace profile preview"
               className="block h-[520px] w-full border border-neutral-300 bg-white max-[1100px]:h-[420px]"
-              sandbox="allow-scripts allow-popups allow-presentation"
+              sandbox="allow-popups allow-presentation"
               srcDoc=sourcePreview
             />
           </Card.Content>
