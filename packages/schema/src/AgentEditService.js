@@ -1575,6 +1575,10 @@ async function persistAppliedPatch(databaseUrl, input, state, patch, providerCon
             summary = $4,
             warnings = $5::jsonb,
             error = NULL,
+            failed_html = NULL,
+            failed_css = NULL,
+            failed_validation_message = NULL,
+            failed_validation_span = NULL,
             updated_at = now()
           WHERE id = $1
           RETURNING ${editSessionSelect}
