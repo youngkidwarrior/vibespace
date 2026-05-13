@@ -524,6 +524,21 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
     | ValidationInvalid(message) => Some("Profile paused: " ++ message)
     }
   }
+  let svgTrustSummary = ProfileDocument.html(document)->ProfileValidation.svgTrust
+  let renderSvgTrustBadges = () => {
+    <>
+      {svgTrustSummary.knownCount > 0
+        ? <Badge variant=Outline>
+            {React.string("Known SVG " ++ svgTrustSummary.knownCount->Int.toString)}
+          </Badge>
+        : React.null}
+      {svgTrustSummary.unknownCount > 0
+        ? <Badge variant=Destructive>
+            {React.string("Unknown SVG " ++ svgTrustSummary.unknownCount->Int.toString)}
+          </Badge>
+        : React.null}
+    </>
+  }
   let previewHtml = switch documentValidation {
   | ValidationValid => ProfileDocument.html(document)
   | ValidationChecking => ProfileDocument.html(lastValidDocument)
@@ -1857,8 +1872,13 @@ let make = (~route=Route.Canvas, ~editorContext=fixtureEditorContext) => {
         </Card>
         <section className="grid grid-cols-2 gap-4 max-[1100px]:grid-cols-1">
           <Card>
-            <Card.Header>
+            <Card.Header className="flex items-center justify-between gap-3">
               <Label> {React.string("Profile content")} </Label>
+              <Card.Action>
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  {renderSvgTrustBadges()}
+                </div>
+              </Card.Action>
             </Card.Header>
             <Card.Content>
               <Textarea

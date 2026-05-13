@@ -3850,7 +3850,7 @@ let saveManualProfileVersion = async (
             ~error=profileWriteAuthError,
           ))
         | Some(_) =>
-          switch await ProfileHtmlValidation.validateDocument(~html=input.html, ~css=input.css) {
+          switch await ProfileHtmlValidation.validateManualDocument(~html=input.html, ~css=input.css) {
           | Invalid(message) =>
             SaveManualProfileVersionFailed(profileVersionFailure(
               ~profile=Some(profile),
