@@ -35,7 +35,7 @@
     "rescript:backend:watch": "yarn workspace @vibespace/graphql rescript:watch",
     "resgraph": "yarn rescript:backend && yarn workspace @vibespace/graphql resgraph",
     "resgraph:watch": "yarn rescript:backend && yarn workspace @vibespace/graphql resgraph:lsp",
-    "relay": "yarn workspace @vibespace/web relay",
+    "relay": "node scripts/relay-command.js",
     "relay:validate": "yarn workspace @vibespace/web relay:validate",
     "relay:watch": "yarn workspace @vibespace/web relay:watch",
     "router": "yarn workspace @vibespace/web router",

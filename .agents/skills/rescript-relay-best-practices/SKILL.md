@@ -38,6 +38,9 @@ Read references only as needed:
   Do not duplicate generated types by hand.
 - Use Relay compiler analysis tools before risky schema, fragment, or operation
   changes.
+- For broad Relay audits, run `yarn relay tools executable-definitions
+  --min-selection-lines 50` and review large fragments first. Fragments around
+  50-60+ selection lines often deserve a component/data-boundary split.
 - Pair with the `reanalyze` skill for ReScript dead-code/exception audits,
   warning budgets, and generated Relay artifact suppressions.
 
