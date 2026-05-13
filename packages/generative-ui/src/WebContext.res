@@ -409,6 +409,83 @@ let sanitizeWebContext = (raw: JSON.t): webContext => {
   }
 }
 
+let promptCompactJson = (context: webContext) => {
+  let frames =
+    context.safeFrames
+    ->Array.slice(~start=0, ~end=3)
+    ->Array.map(frame =>
+      JSON.Encode.object(
+        Dict.fromArray([
+          ("title", JSON.Encode.string(frame.title)),
+          ("frameUrl", JSON.Encode.string(frame.frameUrl)),
+          ("frameKind", JSON.Encode.string(frame.frameKind)),
+        ]),
+      )
+    )
+
+  let images =
+    context.safeImages
+    ->Array.slice(~start=0, ~end=4)
+    ->Array.map(image =>
+      JSON.Encode.object(
+        Dict.fromArray([
+          ("title", JSON.Encode.string(image.title)),
+          ("imageUrl", JSON.Encode.string(image.imageUrl)),
+          ("altText", JSON.Encode.string(image.altText)),
+          (
+            "subjectTags",
+            JSON.Encode.array(
+              image.subjectTags
+              ->Array.slice(~start=0, ~end=3)
+              ->Array.map(JSON.Encode.string),
+            ),
+          ),
+        ]),
+      )
+    )
+
+  let facts =
+    context.facts
+    ->Array.slice(~start=0, ~end=6)
+    ->Array.map(fact =>
+      JSON.Encode.object(
+        Dict.fromArray([
+          ("label", JSON.Encode.string(fact.label)),
+          ("value", JSON.Encode.string(fact.value)),
+        ]),
+      )
+    )
+
+  let citations =
+    context.citations
+    ->Array.slice(~start=0, ~end=4)
+    ->Array.map(citation =>
+      JSON.Encode.object(
+        Dict.fromArray([
+          ("title", JSON.Encode.string(citation.title)),
+          ("url", JSON.Encode.string(citation.url)),
+        ]),
+      )
+    )
+
+  let warnings = context.warnings->Array.map(JSON.Encode.string)
+
+  let payload = JSON.Encode.object(
+    Dict.fromArray([
+      ("status", JSON.Encode.string(context.status)),
+      ("intentKind", JSON.Encode.string(context.intentKind)),
+      ("summary", JSON.Encode.string(context.summary)),
+      ("safeFrames", JSON.Encode.array(frames)),
+      ("safeImages", JSON.Encode.array(images)),
+      ("facts", JSON.Encode.array(facts)),
+      ("citations", JSON.Encode.array(citations)),
+      ("warnings", JSON.Encode.array(warnings)),
+    ]),
+  )
+
+  JSON.stringify(payload, ~space=0)
+}
+
 let capabilityPolicyForPrompt = () =>
   [
     "Raw HTML/CSS is the default. Treat trusted frames as a narrow escape hatch for explicit live external functionality requests.",

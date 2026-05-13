@@ -71,4 +71,5 @@ type webContext = {
 
 let emptyWebContext: (Nullable.t<string>, Nullable.t<string>) => webContext
 let sanitizeWebContext: JSON.t => webContext
+let promptCompactJson: webContext => string
 let capabilityPolicyForPrompt: unit => string
