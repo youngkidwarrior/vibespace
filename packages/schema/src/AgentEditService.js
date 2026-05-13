@@ -13,7 +13,9 @@ import { normalizeSendtag } from "./SendProfileLookup.js";
 
 const defaultFastModel = "gpt-5.4-nano";
 const defaultReasoningModel = "gpt-5.5";
+const defaultAuditModel = "gpt-5.1-codex-mini";
 const maxFailedPatchSnapshotLength = 200000;
+const minSecurityAuditConfidence = 0.85;
 
 const profileDocumentPatchFormat = {
   type: "json_schema",
@@ -46,6 +48,36 @@ const profileDocumentPatchFormat = {
   },
 };
 
+const profileSecurityAuditFormat = {
+  type: "json_schema",
+  name: "vibespace_profile_security_audit",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      allow: {
+        type: "boolean",
+        description: "True only if the profile HTML and CSS look safe to publish.",
+      },
+      confidence: {
+        type: "number",
+        description: "Confidence from 0 to 1 that the safety decision is correct.",
+      },
+      risk: {
+        type: "string",
+        enum: ["none", "low", "medium", "high"],
+        description: "Highest security risk level found in the profile document.",
+      },
+      reason: {
+        type: "string",
+        description: "One short sentence explaining the decision.",
+      },
+    },
+    required: ["allow", "confidence", "risk", "reason"],
+  },
+};
+
 function serverFailure(message, overrides = {}) {
   return {
     ok: false,
@@ -68,6 +100,16 @@ function modelForMode(mode) {
 
 function reasoningEffortForMode(mode) {
   return mode === "reasoning" ? "high" : "";
+}
+
+export function auditModelCandidates() {
+  return Array.from(
+    new Set(
+      [process.env.OPENAI_AUDIT_MODEL || defaultAuditModel, modelForMode("fast")]
+        .map((model) => String(model || "").trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function stripJsonFence(text) {
@@ -642,6 +684,109 @@ async function requestProfilePatch({ apiKey, prompt, model, reasoningEffort, inp
     patch: parseProfileDocumentJsonPatch(outputText),
     providerConversationId: typeof payload?.id === "string" ? payload.id : undefined,
   };
+}
+
+function normalizeProfileSecurityAudit(value) {
+  const confidence = Number(value?.confidence);
+  const risk = String(value?.risk || "").toLowerCase();
+  return {
+    allow: value?.allow === true,
+    confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,
+    risk: ["none", "low", "medium", "high"].includes(risk) ? risk : "high",
+    reason: String(value?.reason || "Security audit did not provide a reason.").slice(0, 500),
+  };
+}
+
+export function securityAuditDecision(audit) {
+  const result = normalizeProfileSecurityAudit(audit);
+  const ok =
+    result.allow === true &&
+    result.confidence >= minSecurityAuditConfidence &&
+    (result.risk === "none" || result.risk === "low");
+
+  return {
+    ok,
+    message: ok
+      ? ""
+      : `Security audit blocked this profile: ${result.reason} (risk=${result.risk}, confidence=${result.confidence.toFixed(2)}).`,
+    audit: result,
+  };
+}
+
+function composeSecurityAuditPrompt(patch) {
+  return [
+    "Audit this generated profile HTML/CSS for publish security risk.",
+    "Block script execution, event handlers, unsafe SVG, remote resource loads, forms, dangerous navigation, and web capability abuse.",
+    "Return allow=true only when it is safe under a no-scripts sandbox with parent-owned trusted media.",
+    "",
+    "HTML:",
+    String(patch?.html || "").slice(0, 120000),
+    "",
+    "CSS:",
+    String(patch?.css || "").slice(0, 80000),
+  ].join("\n");
+}
+
+async function requestProfileSecurityAudit({ apiKey, patch, model }) {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      input: [{ role: "user", content: [{ type: "input_text", text: composeSecurityAuditPrompt(patch) }] }],
+      text: { format: profileSecurityAuditFormat },
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = payload?.error?.message || `OpenAI security audit failed with HTTP ${response.status}.`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.code = payload?.error?.code;
+    error.type = payload?.error?.type;
+    throw error;
+  }
+
+  const outputText = extractOutputText(payload);
+  if (!outputText) {
+    throw new Error("OpenAI returned no security audit content.");
+  }
+
+  return normalizeProfileSecurityAudit(JSON.parse(stripJsonFence(outputText)));
+}
+
+function isAuditModelUnavailableError(error) {
+  const status = Number(error?.status || 0);
+  const code = String(error?.code || "").toLowerCase();
+  const type = String(error?.type || "").toLowerCase();
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    status === 404 ||
+    code.includes("model_not_found") ||
+    code.includes("model_not_available") ||
+    type.includes("model_not_found") ||
+    /\bmodel\b.*\b(not found|not available|unavailable|does not exist|unsupported)\b/.test(message)
+  );
+}
+
+async function requestProfileSecurityAuditWithFallback({ apiKey, patch }) {
+  const models = auditModelCandidates();
+  let lastError;
+  for (const [index, model] of models.entries()) {
+    try {
+      return await requestProfileSecurityAudit({ apiKey, patch, model });
+    } catch (error) {
+      lastError = error;
+      if (index >= models.length - 1 || !isAuditModelUnavailableError(error)) {
+        throw error;
+      }
+    }
+  }
+  throw lastError || new Error("OpenAI security audit failed before model selection.");
 }
 
 function trustedSourcesFromHtml(html, kind) {
@@ -1313,6 +1458,27 @@ async function runAgentEdit(input, state) {
     }
 
     const validatedPatch = validatedGeneratedPatch(patch, validationMessage);
+    await updateSessionProgress(databaseUrl, state.session.id, "validating");
+    const securityAudit = await requestProfileSecurityAuditWithFallback({
+      apiKey,
+      patch: validatedPatch,
+    });
+    const securityDecision = securityAuditDecision(securityAudit);
+    if (!securityDecision.ok) {
+      const session = await updateSessionFailure(databaseUrl, state.session.id, {
+        summary: "Assistant output failed security audit.",
+        warnings: warningArray(validatedPatch.warnings),
+        error: securityDecision.message,
+        progressPhase: "validating",
+      });
+      return serverFailure(securityDecision.message, {
+        summary: "Assistant output failed security audit.",
+        warnings: warningArray(validatedPatch.warnings),
+        validationErrors: [securityDecision.message],
+        session,
+        providerConversationId,
+      });
+    }
 
     await updateSessionProgress(databaseUrl, state.session.id, "applying");
     const persisted = await persistAppliedPatch(

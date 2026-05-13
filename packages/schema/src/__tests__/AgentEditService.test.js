@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   assertProfileCurrentVersionUnchanged,
+  auditModelCandidates,
   repairGeneratedCss,
   resolveWebContextForPrompt,
+  securityAuditDecision,
   shouldPersistSendtag,
 } from "../AgentEditService.js";
 import { validateGeneratedPatch } from "../AgentEditSafety.res.js";
@@ -281,5 +283,64 @@ describe("AgentEditSafety validated patches", () => {
       message: "",
       patch,
     });
+  });
+});
+
+describe("AgentEditService security audit decision", () => {
+  it("defaults to codex mini and falls back to the fast model", () => {
+    const previousAuditModel = process.env.OPENAI_AUDIT_MODEL;
+    const previousFastModel = process.env.OPENAI_FAST_MODEL;
+    delete process.env.OPENAI_AUDIT_MODEL;
+    process.env.OPENAI_FAST_MODEL = "gpt-fast-unit-test";
+
+    try {
+      expect(auditModelCandidates()).toEqual(["gpt-5.1-codex-mini", "gpt-fast-unit-test"]);
+    } finally {
+      if (previousAuditModel === undefined) {
+        delete process.env.OPENAI_AUDIT_MODEL;
+      } else {
+        process.env.OPENAI_AUDIT_MODEL = previousAuditModel;
+      }
+      if (previousFastModel === undefined) {
+        delete process.env.OPENAI_FAST_MODEL;
+      } else {
+        process.env.OPENAI_FAST_MODEL = previousFastModel;
+      }
+    }
+  });
+
+  it("allows low-risk audit results at the confidence threshold", () => {
+    expect(
+      securityAuditDecision({
+        allow: true,
+        confidence: 0.85,
+        risk: "low",
+        reason: "Deterministic checks passed.",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("blocks low-confidence audit results", () => {
+    const result = securityAuditDecision({
+      allow: true,
+      confidence: 0.84,
+      risk: "low",
+      reason: "Mostly safe, but uncertain.",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("confidence=0.84");
+  });
+
+  it("blocks explicit audit denials", () => {
+    const result = securityAuditDecision({
+      allow: false,
+      confidence: 0.99,
+      risk: "high",
+      reason: "Potential script execution.",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("Potential script execution");
   });
 });
