@@ -6,6 +6,9 @@ import {
   resolveWebContextForPrompt,
   securityAuditDecision,
   shouldPersistSendtag,
+  startAgentEdit,
+  trustedCapabilityRowsFromHtml,
+  validateProfilePatch,
 } from "../AgentEditService.js";
 import { validateGeneratedPatch } from "../AgentEditSafety.res.js";
 import {
@@ -138,6 +141,109 @@ describe("AgentEditService web context resolution", () => {
 
     expect(webContext.status).toBe("not_found");
     expect(webContext.safeImages).toEqual([]);
+  });
+});
+
+describe("AgentEditService trusted capability validation", () => {
+  const css = ":root{color-scheme:dark}.player{display:block}";
+  const youtubeFrame = {
+    origin: "https://www.youtube.com",
+    frameUrl: "https://www.youtube.com/embed/GR3Liudev18",
+    canonicalUrl: "https://www.youtube.com/watch?v=GR3Liudev18",
+    title: "Pass the Vibes",
+  };
+
+  function profileHtml(inner) {
+    return `
+      <main data-vibespace-id="profile-root" data-vibespace-name="Whole profile" data-vibespace-description="Profile root">
+        ${inner}
+      </main>
+    `;
+  }
+
+  function youtubePlaceholder(extraBeforeSource = "") {
+    return `
+      <div
+        class="player"
+        data-vibespace-capability="trusted_frame"
+        data-vibespace-origin="https://www.youtube.com"
+        data-vibespace-name="YouTube player"
+        data-vibespace-description="Playable song${extraBeforeSource}"
+        data-vibespace-src="https://www.youtube.com/embed/GR3Liudev18">
+      </div>
+    `;
+  }
+
+  it("rejects parser-visible trusted frames even when regex extraction would stop at an attribute value", async () => {
+    const patch = {
+      html: profileHtml(youtubePlaceholder(">")),
+      css,
+      summary: "Added a player.",
+      warnings: "",
+    };
+
+    await expect(validateProfilePatch(patch, { currentHtml: profileHtml("<section></section>"), webContext: {} }))
+      .resolves.toBe("Profile content used a media embed that was not already trusted by this profile.");
+  });
+
+  it("allows trusted frames resolved in current web context", async () => {
+    const patch = {
+      html: profileHtml(youtubePlaceholder(">")),
+      css,
+      summary: "Added a player.",
+      warnings: "",
+    };
+
+    await expect(validateProfilePatch(patch, {
+      currentHtml: profileHtml("<section></section>"),
+      webContext: { safeFrames: [youtubeFrame], safeImages: [] },
+    })).resolves.toBe("");
+  });
+
+  it("persists only policy-valid trusted capability rows", () => {
+    expect(trustedCapabilityRowsFromHtml(profileHtml(youtubePlaceholder()), {
+      safeFrames: [youtubeFrame],
+      safeImages: [],
+    })).toMatchObject([
+      {
+        kind: "trusted_frame",
+        origin: "https://www.youtube.com",
+        source: "https://www.youtube.com/embed/GR3Liudev18",
+        canonicalUrl: "https://www.youtube.com/watch?v=GR3Liudev18",
+      },
+    ]);
+
+    expect(trustedCapabilityRowsFromHtml(profileHtml(`
+      <div
+        data-vibespace-capability="trusted_frame"
+        data-vibespace-origin="https://attacker.example"
+        data-vibespace-name="Bad frame"
+        data-vibespace-description="Bad frame"
+        data-vibespace-src="https://attacker.example/embed">
+      </div>
+    `), { safeFrames: [], safeImages: [] })).toEqual([]);
+  });
+
+  it("fails closed when startAgentEdit has no authenticated actor", async () => {
+    const previousApiKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "test-key";
+
+    try {
+      await expect(startAgentEdit({
+        databaseUrl: "postgres://example.invalid/vibespace",
+        profileId: "profile-id",
+        prompt: "make it cozy",
+      })).resolves.toMatchObject({
+        ok: false,
+        error: "Authenticated actor is required to start an assistant edit.",
+      });
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previousApiKey;
+      }
+    }
   });
 });
 

@@ -5,10 +5,18 @@ import {
   sanitizeWebContext,
 } from "@vibespace/generative-ui";
 import {
+  trustedFrameMatchValue,
+  trustedImageMatchValue,
+} from "@vibespace/generative-ui/src/WebCapabilityPolicy.res.js";
+import {
   checkProfileCurrentVersionUnchanged,
   validateGeneratedPatch,
 } from "./AgentEditSafety.res.js";
-import { markKnownInlineSvg, validateGeneratedProfileDocument } from "./ProfileHtmlValidation.js";
+import {
+  markKnownInlineSvg,
+  trustedCapabilityPlaceholdersFromHtml,
+  validateGeneratedProfileDocument,
+} from "./ProfileHtmlValidation.js";
 import { normalizeSendtag } from "./SendProfileLookup.js";
 
 const defaultFastModel = "gpt-5.4-nano";
@@ -789,67 +797,147 @@ async function requestProfileSecurityAuditWithFallback({ apiKey, patch }) {
   throw lastError || new Error("OpenAI security audit failed before model selection.");
 }
 
-function trustedSourcesFromHtml(html, kind) {
-  const capability = kind === "frame" ? "trusted_frame" : "trusted_image";
-  return Array.from(
-    String(html || "").matchAll(
-      new RegExp(
-        `<[^>]*data-vibespace-capability\\s*=\\s*["']${capability}["'][^>]*>`,
-        "gi",
-      ),
-    ),
-  )
-    .map((match) => match[0].match(/\sdata-vibespace-src\s*=\s*["']([^"']+)["']/i)?.[1] || "")
-    .map((value) => value.replaceAll("&amp;", "&").trim())
-    .filter(Boolean);
+function trustedCapabilityKey(kind, source) {
+  return `${kind}\u0000${String(source || "").trim()}`;
 }
 
-function trustedSourcesFromWebContext(webContext, kind) {
-  const items = kind === "frame" ? webContext?.safeFrames : webContext?.safeImages;
-  const field = kind === "frame" ? "frameUrl" : "imageUrl";
-  return Array.isArray(items)
-    ? items.map((item) => String(item?.[field] || "").trim()).filter(Boolean)
-    : [];
-}
-
-function trustedCapabilityMetadataForSource(webContext, kind, source) {
-  const items = kind === "trusted_frame" ? webContext?.safeFrames : webContext?.safeImages;
-  const field = kind === "trusted_frame" ? "frameUrl" : "imageUrl";
-  const item = Array.isArray(items)
-    ? items.find((candidate) => String(candidate?.[field] || "").trim() === source)
-    : undefined;
-
-  let origin = "";
-  try {
-    origin = new URL(source).origin;
-  } catch {
-    origin = "";
-  }
-
+function trustedFrameSource(source, origin) {
+  const match = trustedFrameMatchValue(String(source || ""), String(origin || ""));
+  if (!match) return undefined;
   return {
-    origin: String(item?.origin || origin),
-    canonicalUrl: String(item?.canonicalUrl || ""),
-    metadataJson: JSON.stringify(item || {}),
+    kind: "trusted_frame",
+    source: match.url.href,
+    origin: match.origin,
   };
 }
 
-function trustedCapabilityRowsFromHtml(html, webContext) {
-  const rows = [];
-  for (const source of Array.from(new Set(trustedSourcesFromHtml(html, "frame")))) {
-    rows.push({
-      kind: "trusted_frame",
-      source,
-      ...trustedCapabilityMetadataForSource(webContext, "trusted_frame", source),
-    });
+function trustedImageSource(source, origin) {
+  const match = trustedImageMatchValue(String(source || ""), String(origin || ""));
+  if (!match) return undefined;
+  const [url, normalizedOrigin] = match;
+  return {
+    kind: "trusted_image",
+    source: url.href,
+    origin: normalizedOrigin,
+  };
+}
+
+function trustedCapabilityFromPlaceholder(placeholder) {
+  if (placeholder.capability === "trusted_frame") {
+    if (!placeholder.origin) return { message: "Trusted frame placeholders must include data-vibespace-origin." };
+    if (!placeholder.source) return { message: "Trusted frame placeholders must include data-vibespace-src." };
+    const capability = trustedFrameSource(placeholder.source, placeholder.origin);
+    if (!capability) return { message: "Profile content includes an unsupported or unsafe trusted frame URL." };
+    if (!placeholder.name || !placeholder.description) {
+      return { message: "Trusted frame placeholders must include data-vibespace-name and data-vibespace-description." };
+    }
+    return { capability };
   }
-  for (const source of Array.from(new Set(trustedSourcesFromHtml(html, "image")))) {
-    rows.push({
-      kind: "trusted_image",
-      source,
-      ...trustedCapabilityMetadataForSource(webContext, "trusted_image", source),
-    });
+
+  if (placeholder.capability === "trusted_image") {
+    if (!placeholder.origin) return { message: "Trusted image placeholders must include data-vibespace-origin." };
+    if (!placeholder.source) return { message: "Trusted image placeholders must include data-vibespace-src." };
+    const capability = trustedImageSource(placeholder.source, placeholder.origin);
+    if (!capability) return { message: "Profile content includes an unsupported or unsafe trusted image URL." };
+    if (!placeholder.name || !placeholder.description) {
+      return { message: "Trusted image placeholders must include data-vibespace-name and data-vibespace-description." };
+    }
+    if (!placeholder.alt) return { message: "Trusted image placeholders must include data-vibespace-alt." };
+    return { capability };
   }
-  return rows.filter((row) => row.origin && row.source);
+
+  return { message: `Unsupported web capability "${placeholder.capability}".` };
+}
+
+function trustedCapabilitiesFromHtml(html) {
+  const capabilities = [];
+  for (const placeholder of trustedCapabilityPlaceholdersFromHtml(html)) {
+    const result = trustedCapabilityFromPlaceholder(placeholder);
+    if (result.message) return { message: result.message, capabilities: [] };
+    capabilities.push(result.capability);
+  }
+  return { message: "", capabilities };
+}
+
+function trustedCapabilitiesFromWebContext(webContext) {
+  const capabilities = [];
+  for (const frame of Array.isArray(webContext?.safeFrames) ? webContext.safeFrames : []) {
+    const capability = trustedFrameSource(frame?.frameUrl, frame?.origin);
+    if (capability) {
+      capabilities.push({
+        ...capability,
+        canonicalUrl: String(frame?.canonicalUrl || ""),
+        metadataJson: JSON.stringify(frame || {}),
+      });
+    }
+  }
+  for (const image of Array.isArray(webContext?.safeImages) ? webContext.safeImages : []) {
+    const capability = trustedImageSource(image?.imageUrl, image?.origin);
+    if (capability) {
+      capabilities.push({
+        ...capability,
+        canonicalUrl: String(image?.canonicalUrl || ""),
+        metadataJson: JSON.stringify(image || {}),
+      });
+    }
+  }
+  return capabilities;
+}
+
+function trustedCapabilityMetadataForSource(webContext, capability) {
+  const contextMatch = trustedCapabilitiesFromWebContext(webContext).find(
+    (candidate) => trustedCapabilityKey(candidate.kind, candidate.source) === trustedCapabilityKey(capability.kind, capability.source),
+  );
+
+  return {
+    canonicalUrl: String(contextMatch?.canonicalUrl || ""),
+    metadataJson: String(contextMatch?.metadataJson || "{}"),
+  };
+}
+
+export function trustedCapabilityRowsFromHtml(html, webContext) {
+  const parsed = trustedCapabilitiesFromHtml(html);
+  if (parsed.message) {
+    return [];
+  }
+
+  const rowsByKey = new Map();
+  for (const capability of parsed.capabilities) {
+    const key = trustedCapabilityKey(capability.kind, capability.source);
+    if (!rowsByKey.has(key)) {
+      rowsByKey.set(key, {
+        ...capability,
+        ...trustedCapabilityMetadataForSource(webContext, capability),
+      });
+    }
+  }
+  return Array.from(rowsByKey.values());
+}
+
+function trustedCapabilityAllowedSet(currentHtml, webContext) {
+  const allowed = new Set();
+  const existing = trustedCapabilitiesFromHtml(currentHtml);
+  if (!existing.message) {
+    for (const capability of existing.capabilities) {
+      allowed.add(trustedCapabilityKey(capability.kind, capability.source));
+    }
+  }
+
+  for (const capability of trustedCapabilitiesFromWebContext(webContext)) {
+    allowed.add(trustedCapabilityKey(capability.kind, capability.source));
+  }
+  return allowed;
+}
+
+function trustedCapabilityUsageMessage(generatedCapabilities, allowed) {
+  for (const capability of generatedCapabilities) {
+    if (!allowed.has(trustedCapabilityKey(capability.kind, capability.source))) {
+      return capability.kind === "trusted_frame"
+        ? "Profile content used a media embed that was not already trusted by this profile."
+        : "Profile content used an image that was not already trusted by this profile.";
+    }
+  }
+  return "";
 }
 
 function withGeneratedCssRepairs(patch) {
@@ -857,7 +945,7 @@ function withGeneratedCssRepairs(patch) {
   return css === patch?.css ? patch : { ...patch, css };
 }
 
-async function validateProfilePatch(patch, { currentHtml, webContext }) {
+export async function validateProfilePatch(patch, { currentHtml, webContext }) {
   const html = String(patch?.html || "");
   const css = String(patch?.css || "");
 
@@ -866,25 +954,13 @@ async function validateProfilePatch(patch, { currentHtml, webContext }) {
     return validationMessage;
   }
 
-  const existingFrames = new Set(trustedSourcesFromHtml(currentHtml, "frame"));
-  for (const source of trustedSourcesFromWebContext(webContext, "frame")) {
-    existingFrames.add(source);
-  }
-  const generatedFrames = trustedSourcesFromHtml(html, "frame");
-  if (generatedFrames.some((source) => !existingFrames.has(source))) {
-    return "Profile content used a media embed that was not already trusted by this profile.";
-  }
+  const generated = trustedCapabilitiesFromHtml(html);
+  if (generated.message) return generated.message;
 
-  const existingImages = new Set(trustedSourcesFromHtml(currentHtml, "image"));
-  for (const source of trustedSourcesFromWebContext(webContext, "image")) {
-    existingImages.add(source);
-  }
-  const generatedImages = trustedSourcesFromHtml(html, "image");
-  if (generatedImages.some((source) => !existingImages.has(source))) {
-    return "Profile content used an image that was not already trusted by this profile.";
-  }
-
-  return "";
+  return trustedCapabilityUsageMessage(
+    generated.capabilities,
+    trustedCapabilityAllowedSet(currentHtml, webContext),
+  );
 }
 
 function warningArray(warnings) {
@@ -956,6 +1032,11 @@ const editSessionSelect = `
 
 async function createSessionAndLoadSource(databaseUrl, input) {
   return await withClient(databaseUrl, async (client) => {
+    const actorUserId = String(input.actorUserId || "").trim();
+    if (!actorUserId) {
+      return { error: "Authenticated actor is required to start an assistant edit." };
+    }
+
     const profile = await queryOne(
       client,
       `
@@ -988,7 +1069,6 @@ async function createSessionAndLoadSource(databaseUrl, input) {
       return { error: "Current profile version was not found." };
     }
 
-    const actorUserId = input.actorUserId || profile.ownerUserId;
     const session = await queryOne(
       client,
       `
@@ -1523,6 +1603,10 @@ export async function startAgentEdit(input) {
     return serverFailure("Prompt is required.", {
       summary: "Agent edit was not submitted.",
     });
+  }
+
+  if (!String(input?.actorUserId || "").trim()) {
+    return serverFailure("Authenticated actor is required to start an assistant edit.");
   }
 
   const databaseUrl = input?.databaseUrl || "";
