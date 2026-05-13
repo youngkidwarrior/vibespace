@@ -202,6 +202,7 @@ type profileEditSession = {
   @live @gql.field failedHtml: option<string>,
   @live @gql.field failedCss: option<string>,
   @live @gql.field failedValidationMessage: option<string>,
+  @live @gql.field failedValidationSpanJson: option<string>,
   @live @gql.field createdAt: string,
   @live @gql.field updatedAt: string,
 }
@@ -806,6 +807,7 @@ let fixtureEditSession: profileEditSession = {
   failedHtml: None,
   failedCss: None,
   failedValidationMessage: None,
+  failedValidationSpanJson: None,
   createdAt,
   updatedAt,
 }
@@ -1270,6 +1272,7 @@ type agentServiceSession = {
   failedHtml: Nullable.t<string>,
   failedCss: Nullable.t<string>,
   failedValidationMessage: Nullable.t<string>,
+  failedValidationSpanJson: Nullable.t<string>,
   createdAt: option<string>,
   updatedAt: option<string>,
 }
@@ -2008,6 +2011,7 @@ let profileEditSessionFromFields = (
   ~failedHtml: option<string>,
   ~failedCss: option<string>,
   ~failedValidationMessage: option<string>,
+  ~failedValidationSpanJson: option<string>,
   ~createdAt: option<string>,
   ~updatedAt: option<string>,
 ): profileEditSession => {
@@ -2026,6 +2030,7 @@ let profileEditSessionFromFields = (
   failedHtml,
   failedCss,
   failedValidationMessage,
+  failedValidationSpanJson,
   createdAt: createdAt->stringOrDefault(fallbackUpdatedAt),
   updatedAt: updatedAt->stringOrDefault(fallbackUpdatedAt),
 }
@@ -2046,6 +2051,7 @@ let profileEditSessionFromDbFields = (
   ~failedHtml: option<string>=None,
   ~failedCss: option<string>=None,
   ~failedValidationMessage: option<string>=None,
+  ~failedValidationSpanJson: option<string>=None,
   ~createdAt: option<string>,
   ~updatedAt: option<string>,
 ): profileEditSession =>
@@ -2065,6 +2071,7 @@ let profileEditSessionFromDbFields = (
     ~failedHtml,
     ~failedCss,
     ~failedValidationMessage,
+    ~failedValidationSpanJson,
     ~createdAt,
     ~updatedAt,
   )
@@ -2086,6 +2093,7 @@ let profileEditSessionFromAgentService = (row: agentServiceSession): profileEdit
     ~failedHtml=row.failedHtml->Nullable.toOption,
     ~failedCss=row.failedCss->Nullable.toOption,
     ~failedValidationMessage=row.failedValidationMessage->Nullable.toOption,
+    ~failedValidationSpanJson=row.failedValidationSpanJson->Nullable.toOption,
     ~createdAt=row.createdAt,
     ~updatedAt=row.updatedAt,
   )
@@ -2109,6 +2117,7 @@ let profileEditSessionFromGetById = (
     ~failedHtml=row.failedHtml,
     ~failedCss=row.failedCss,
     ~failedValidationMessage=row.failedValidationMessage,
+    ~failedValidationSpanJson=row.failedValidationSpanJson,
     ~createdAt=row.createdAt,
     ~updatedAt=row.updatedAt,
   )
@@ -2132,6 +2141,7 @@ let profileEditSessionFromList = (
     ~failedHtml=row.failedHtml,
     ~failedCss=row.failedCss,
     ~failedValidationMessage=row.failedValidationMessage,
+    ~failedValidationSpanJson=row.failedValidationSpanJson,
     ~createdAt=row.createdAt,
     ~updatedAt=row.updatedAt,
   )
@@ -2155,6 +2165,7 @@ let profileEditSessionFromCancel = (
     ~failedHtml=row.failedHtml,
     ~failedCss=row.failedCss,
     ~failedValidationMessage=row.failedValidationMessage,
+    ~failedValidationSpanJson=row.failedValidationSpanJson,
     ~createdAt=row.createdAt,
     ~updatedAt=row.updatedAt,
   )

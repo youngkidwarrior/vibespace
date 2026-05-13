@@ -92,6 +92,7 @@ CREATE TABLE profile_edit_sessions (
   failed_html text,
   failed_css text,
   failed_validation_message text,
+  failed_validation_span jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

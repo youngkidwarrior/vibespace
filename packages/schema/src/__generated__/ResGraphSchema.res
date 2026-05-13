@@ -1671,6 +1671,15 @@ t_ProfileEditSession.contents = GraphQLObjectType.make({
           src["failedValidationMessage"]
         }),
       },
+      "failedValidationSpanJson": {
+        typ: Scalars.string->Scalars.toGraphQLType,
+        description: ?None,
+        deprecationReason: ?None,
+        resolve: makeResolveFn((src, _args, _ctx, _info) => {
+          let src = typeUnwrapper(src)
+          src["failedValidationSpanJson"]
+        }),
+      },
       "id": {
         typ: Scalars.id->Scalars.toGraphQLType->nonNull,
         description: "Relay global id for every type implementing Node.",
