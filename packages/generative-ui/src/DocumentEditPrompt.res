@@ -102,7 +102,7 @@ let typedInputFromWire = (input: profileEditPromptInput): typedProfileEditPrompt
 @throws(JsExn)
 let composeProfileEditPrompt = (input: profileEditPromptInput) => {
   let input = input->typedInputFromWire
-  let webContextJson = input.webContext->JSON.stringifyAny(~space=2)->Option.getOr("{}")
+  let webContextJson = input.webContext->WebContext.promptCompactJson
 
   [
     "<vibespace_task>",
