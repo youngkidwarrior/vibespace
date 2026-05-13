@@ -225,6 +225,12 @@ function hasMediaIntent(text) {
   );
 }
 
+function hasImageIntent(text) {
+  return /\b(real\s+)?(photo|image|picture|portrait|poster|visual|wikimedia|commons|celebrity|headshot)\b/i.test(
+    String(text || ""),
+  );
+}
+
 function trimUrlToken(value) {
   return String(value || "")
     .replace(/&amp;/g, "&")
@@ -241,9 +247,151 @@ function safeUrl(value, base) {
   try {
     const url = new URL(value, base);
     if (url.protocol !== "https:") return undefined;
+    if (url.username || url.password) return undefined;
     return url;
   } catch {
     return undefined;
+  }
+}
+
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncateText(value, maxLength) {
+  return stripHtml(value).slice(0, maxLength);
+}
+
+function wikimediaFileTitleFromUrl(rawUrl) {
+  const url = safeUrl(rawUrl);
+  if (!url) return "";
+
+  const host = url.hostname.toLowerCase();
+  if (host !== "commons.wikimedia.org" && host !== "upload.wikimedia.org") {
+    return "";
+  }
+
+  if (host === "commons.wikimedia.org") {
+    const wikiMatch = decodeURIComponent(url.pathname).match(/\/wiki\/(File:[^?#]+)/i);
+    return wikiMatch ? wikiMatch[1].replaceAll("_", " ") : "";
+  }
+
+  const filename = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
+  return filename ? `File:${filename.replaceAll("_", " ")}` : "";
+}
+
+function imageSearchQueryFromPrompt(prompt) {
+  const withoutUrls = String(prompt || "").replace(/https:\/\/[^\s<>"']+/gi, " ");
+  const cleaned = withoutUrls
+    .replace(
+      /\b(use|add|make|create|show|include|find|fetch|get|real|photo|image|picture|portrait|poster|visual|wikimedia|commons|celebrity|headshot|profile|page|of|for|from|the|a|an|and|with)\b/gi,
+      " ",
+    )
+    .replace(/[^\p{L}\p{N}\s.'-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned.slice(0, 80);
+}
+
+function commonsApiUrlForSearch(query) {
+  const endpoint = new URL("https://commons.wikimedia.org/w/api.php");
+  endpoint.searchParams.set("action", "query");
+  endpoint.searchParams.set("format", "json");
+  endpoint.searchParams.set("origin", "*");
+  endpoint.searchParams.set("generator", "search");
+  endpoint.searchParams.set("gsrnamespace", "6");
+  endpoint.searchParams.set("gsrlimit", "8");
+  endpoint.searchParams.set("gsrsearch", query);
+  endpoint.searchParams.set("prop", "imageinfo");
+  endpoint.searchParams.set("iiprop", "url|mime|extmetadata");
+  endpoint.searchParams.set("iiurlwidth", "1200");
+  return endpoint.toString();
+}
+
+function commonsApiUrlForTitle(title) {
+  const endpoint = new URL("https://commons.wikimedia.org/w/api.php");
+  endpoint.searchParams.set("action", "query");
+  endpoint.searchParams.set("format", "json");
+  endpoint.searchParams.set("origin", "*");
+  endpoint.searchParams.set("titles", title);
+  endpoint.searchParams.set("prop", "imageinfo");
+  endpoint.searchParams.set("iiprop", "url|mime|extmetadata");
+  endpoint.searchParams.set("iiurlwidth", "1200");
+  return endpoint.toString();
+}
+
+function extMetadataValue(metadata, key) {
+  return stripHtml(metadata?.[key]?.value || "");
+}
+
+function isTrustedWikimediaRasterImageUrl(value) {
+  const url = safeUrl(value);
+  if (!url) return false;
+  if (url.origin !== "https://upload.wikimedia.org") return false;
+  if (/\.svg(?:$|[?#])/i.test(url.pathname)) return false;
+  return /\.(?:avif|gif|jpe?g|png|webp|tiff?)(?:$|[?#])/i.test(url.pathname);
+}
+
+function safeImageFromCommonsPage(page, query) {
+  const imageInfo = Array.isArray(page?.imageinfo) ? page.imageinfo[0] : undefined;
+  const metadata = imageInfo?.extmetadata || {};
+  const imageUrl = String(imageInfo?.thumburl || imageInfo?.url || "").trim();
+  const mime = String(imageInfo?.mime || "").toLowerCase();
+  if (!imageUrl || mime === "image/svg+xml" || !mime.startsWith("image/")) return undefined;
+  if (!isTrustedWikimediaRasterImageUrl(imageUrl)) return undefined;
+
+  const canonicalUrl = `https://commons.wikimedia.org/wiki/${encodeURIComponent(
+    String(page?.title || "").replaceAll(" ", "_"),
+  )}`;
+  const title = truncateText(extMetadataValue(metadata, "ObjectName") || page?.title || query, 160);
+  const description = truncateText(
+    extMetadataValue(metadata, "ImageDescription") || `Wikimedia Commons image for ${query}`,
+    220,
+  );
+
+  return {
+    origin: "https://upload.wikimedia.org",
+    title,
+    source: "Wikimedia Commons",
+    creator: truncateText(extMetadataValue(metadata, "Artist"), 120),
+    license: truncateText(extMetadataValue(metadata, "LicenseShortName"), 120),
+    licenseUrl: truncateText(extMetadataValue(metadata, "LicenseUrl"), 300),
+    imageUrl,
+    canonicalUrl,
+    altText: description || title || `Wikimedia Commons image for ${query}`,
+    subjectTags: [query, "Wikimedia Commons"].filter(Boolean),
+    visualCues: [title, description].filter(Boolean).slice(0, 4),
+  };
+}
+
+async function fetchWikimediaImages(apiUrl, query, fetchImpl) {
+  if (typeof fetchImpl !== "function" || !query) return [];
+
+  const controller = typeof AbortController === "function" ? new AbortController() : undefined;
+  const timeout = controller ? setTimeout(() => controller.abort(), 3000) : undefined;
+  try {
+    const response = await fetchImpl(apiUrl, {
+      signal: controller?.signal,
+      headers: {
+        accept: "application/json",
+        "user-agent": "Vibespace/1.0 safe-media-resolver",
+      },
+    });
+    if (!response?.ok) return [];
+    const payload = await response.json().catch(() => null);
+    const pages = Object.values(payload?.query?.pages || {});
+    return pages
+      .map((page) => safeImageFromCommonsPage(page, query))
+      .filter(Boolean)
+      .slice(0, 6);
+  } catch {
+    return [];
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 
@@ -373,9 +521,7 @@ async function trustedFrameForPromptUrl(rawUrl, fetchImpl) {
 export async function resolveWebContextForPrompt(prompt, options = {}) {
   const urls = extractPromptHttpsUrls(prompt);
   const mediaIntent = hasMediaIntent(prompt);
-  if (urls.length === 0) {
-    return emptyWebContext(null, null);
-  }
+  const imageIntent = hasImageIntent(prompt);
 
   const fetchImpl = Object.prototype.hasOwnProperty.call(options, "fetchImpl")
     ? options.fetchImpl
@@ -386,32 +532,72 @@ export async function resolveWebContextForPrompt(prompt, options = {}) {
     if (frame) safeFrames.push(frame);
   }
 
-  if (safeFrames.length === 0) {
+  const safeImages = [];
+  const wikimediaTitles = urls.map(wikimediaFileTitleFromUrl).filter(Boolean);
+  for (const title of wikimediaTitles) {
+    safeImages.push(...(await fetchWikimediaImages(commonsApiUrlForTitle(title), title.replace(/^File:/i, ""), fetchImpl)));
+  }
+
+  const promptImageQuery = imageIntent ? imageSearchQueryFromPrompt(prompt) : "";
+  if (promptImageQuery && safeImages.length === 0) {
+    safeImages.push(
+      ...(await fetchWikimediaImages(commonsApiUrlForSearch(promptImageQuery), promptImageQuery, fetchImpl)),
+    );
+  }
+
+  const dedupedSafeImages = Array.from(
+    new Map(safeImages.map((image) => [image.imageUrl, image])).values(),
+  ).slice(0, 6);
+
+  if (safeFrames.length === 0 && dedupedSafeImages.length === 0) {
     return sanitizeWebContext({
-      status: mediaIntent ? "not_found" : "not_needed",
-      intentKind: mediaIntent ? "media" : "reference",
+      status: mediaIntent || imageIntent ? "not_found" : "not_needed",
+      intentKind: mediaIntent ? "media" : imageIntent ? "person" : "reference",
       warnings: mediaIntent
         ? ["Media lookup did not produce a trusted-origin frame URL."]
-        : [],
+        : imageIntent
+          ? ["Image lookup did not produce a trusted raster image from Wikimedia Commons."]
+          : [],
     });
   }
 
   return sanitizeWebContext({
     status: "resolved",
-    intentKind: "media",
-    summary: "Resolved a trusted media frame from the user's prompt URL.",
+    intentKind: mediaIntent ? "media" : "person",
+    summary:
+      safeFrames.length > 0 && dedupedSafeImages.length > 0
+        ? "Resolved trusted media and image context for this profile request."
+        : safeFrames.length > 0
+          ? "Resolved a trusted media frame from the user's prompt URL."
+          : "Resolved trusted Wikimedia Commons image context for this profile request.",
     safeFrames,
+    safeImages: dedupedSafeImages,
     resolvedItems: safeFrames.map((frame) => ({
       title: frame.title,
       description: "Trusted playable media frame resolved for this profile request.",
       canonicalUrl: frame.canonicalUrl,
       provider: frame.origin,
       itemType: "media",
-    })),
-    citations: safeFrames.map((frame) => ({
-      title: frame.title,
-      url: frame.canonicalUrl,
-    })),
+    })).concat(
+      dedupedSafeImages.map((image) => ({
+        title: image.title,
+        description: image.altText,
+        canonicalUrl: image.canonicalUrl,
+        provider: image.source,
+        itemType: "image",
+      })),
+    ),
+    citations: safeFrames
+      .map((frame) => ({
+        title: frame.title,
+        url: frame.canonicalUrl,
+      }))
+      .concat(
+        dedupedSafeImages.map((image) => ({
+          title: image.title,
+          url: image.canonicalUrl,
+        })),
+      ),
   });
 }
 
