@@ -1218,6 +1218,16 @@ function warningArray(warnings) {
   return text ? [text] : [];
 }
 
+function appendAuditWarning(existingWarnings, decision) {
+  const audit = decision?.audit || {};
+  const reason = String(audit?.reason || "Security audit flagged a concern.").trim();
+  const risk = String(audit?.risk || "unknown");
+  const confidence = Number.isFinite(audit?.confidence) ? audit.confidence.toFixed(2) : "0.00";
+  const auditLine = `Security audit advisory: ${reason} (risk=${risk}, confidence=${confidence})`;
+  const existing = String(existingWarnings || "").trim();
+  return existing ? `${existing}\n${auditLine}` : auditLine;
+}
+
 function cleanProfileName(value) {
   const name = String(value || "").trim().replace(/\s+/g, " ");
   return name ? name.slice(0, 80) : "";
@@ -1925,27 +1935,13 @@ async function runAgentEdit(input, state) {
         ok: securityDecision.ok,
       });
       if (!securityDecision.ok) {
-        const session = await updateSessionFailure(databaseUrl, state.session.id, {
-          summary: "Assistant output failed security audit.",
-          warnings: warningArray(validatedPatch.warnings),
-          error: securityDecision.message,
-          progressPhase: "validating",
-          failedHtml: validatedPatch?.html || null,
-          failedCss: validatedPatch?.css || null,
-          failedValidationMessage: securityDecision.message,
-        });
-        logAgentEditPhase("total", {
+        validatedPatch.warnings = appendAuditWarning(validatedPatch.warnings, securityDecision);
+        logAgentEditPhase("audit_advisory", {
           sessionId,
-          elapsedMs: agentEditNow() - totalStartedAt,
-          outcome: "audit_blocked",
-          error: securityDecision.message,
-        });
-        return serverFailure(securityDecision.message, {
-          summary: "Assistant output failed security audit.",
-          warnings: warningArray(validatedPatch.warnings),
-          validationErrors: [securityDecision.message],
-          session,
-          providerConversationId,
+          risk: securityDecision.audit.risk,
+          confidence: securityDecision.audit.confidence,
+          reason: securityDecision.audit.reason,
+          outcome: "warning_appended_publish_allowed",
         });
       }
     } else {
@@ -2383,19 +2379,13 @@ export async function runTargetedAgentEditRepair(input) {
         ok: decision.ok,
       });
       if (!decision.ok) {
-        const failureSession = await updateFailureWithSpan(decision.message, validatedPatch);
-        logAgentEditPhase("total", {
+        validatedPatch.warnings = appendAuditWarning(validatedPatch.warnings, decision);
+        logAgentEditPhase("targeted_audit_advisory", {
           sessionId,
-          elapsedMs: agentEditNow() - totalStartedAt,
-          outcome: "targeted_audit_blocked",
-          error: decision.message,
-        });
-        return serverFailure(decision.message, {
-          summary: "Targeted repair failed security audit.",
-          warnings: warningArray(validatedPatch.warnings),
-          validationErrors: [decision.message],
-          session: failureSession,
-          providerConversationId,
+          risk: decision.audit.risk,
+          confidence: decision.audit.confidence,
+          reason: decision.audit.reason,
+          outcome: "warning_appended_publish_allowed",
         });
       }
     } else {
