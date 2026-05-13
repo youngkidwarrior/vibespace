@@ -827,6 +827,9 @@ SELECT
   pes.summary AS "summary",
   pes.warnings::text AS "warningsJson",
   pes.error AS "error",
+  pes.failed_html AS "failedHtml",
+  pes.failed_css AS "failedCss",
+  pes.failed_validation_message AS "failedValidationMessage",
   pes.created_at::text AS "createdAt",
   pes.updated_at::text AS "updatedAt"
 FROM vibespace.profile_edit_sessions pes
@@ -846,6 +849,9 @@ SELECT
   pes.summary AS "summary",
   pes.warnings::text AS "warningsJson",
   pes.error AS "error",
+  pes.failed_html AS "failedHtml",
+  pes.failed_css AS "failedCss",
+  pes.failed_validation_message AS "failedValidationMessage",
   pes.created_at::text AS "createdAt",
   pes.updated_at::text AS "updatedAt"
 FROM vibespace.profile_edit_sessions pes
@@ -874,6 +880,9 @@ RETURNING
   pes.summary AS "summary",
   pes.warnings::text AS "warningsJson",
   pes.error AS "error",
+  pes.failed_html AS "failedHtml",
+  pes.failed_css AS "failedCss",
+  pes.failed_validation_message AS "failedValidationMessage",
   pes.created_at::text AS "createdAt",
   pes.updated_at::text AS "updatedAt";
 

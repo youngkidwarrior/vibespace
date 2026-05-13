@@ -1086,6 +1086,9 @@ const editSessionSelect = `
   summary AS "summary",
   warnings::jsonb AS "warnings",
   error AS "error",
+  failed_html AS "failedHtml",
+  failed_css AS "failedCss",
+  failed_validation_message AS "failedValidationMessage",
   created_at::text AS "createdAt",
   updated_at::text AS "updatedAt"
 `;
@@ -1157,7 +1160,11 @@ async function createSessionAndLoadSource(databaseUrl, input) {
   });
 }
 
-async function updateSessionFailure(databaseUrl, sessionId, { summary, warnings, error, progressPhase }) {
+async function updateSessionFailure(
+  databaseUrl,
+  sessionId,
+  { summary, warnings, error, progressPhase, failedHtml, failedCss, failedValidationMessage },
+) {
   if (!sessionId) return undefined;
 
   return await withClient(databaseUrl, async (client) =>
@@ -1171,6 +1178,9 @@ async function updateSessionFailure(databaseUrl, sessionId, { summary, warnings,
           summary = $3,
           warnings = $4::jsonb,
           error = $5,
+          failed_html = $6,
+          failed_css = $7,
+          failed_validation_message = $8,
           updated_at = now()
         WHERE id = $1
         RETURNING ${editSessionSelect}
@@ -1181,6 +1191,9 @@ async function updateSessionFailure(databaseUrl, sessionId, { summary, warnings,
         summary || "Agent edit failed.",
         JSON.stringify(warnings || []),
         error,
+        failedHtml ?? null,
+        failedCss ?? null,
+        failedValidationMessage ?? null,
       ],
     )
   );
@@ -1632,6 +1645,9 @@ async function runAgentEdit(input, state) {
           warnings: warningArray(patch.warnings),
           error: validationMessage,
           progressPhase: "validating",
+          failedHtml: patch?.html || null,
+          failedCss: patch?.css || null,
+          failedValidationMessage: validationMessage,
         });
         logAgentEditPhase("total", {
           sessionId,
@@ -1691,6 +1707,9 @@ async function runAgentEdit(input, state) {
           warnings: warningArray(validatedPatch.warnings),
           error: securityDecision.message,
           progressPhase: "validating",
+          failedHtml: validatedPatch?.html || null,
+          failedCss: validatedPatch?.css || null,
+          failedValidationMessage: securityDecision.message,
         });
         logAgentEditPhase("total", {
           sessionId,

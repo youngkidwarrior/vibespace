@@ -451,6 +451,9 @@ type ProfileEditSession implements Node {
   summary: String!
   warnings: [String!]!
   error: String
+  failedHtml: String
+  failedCss: String
+  failedValidationMessage: String
   createdAt: String!
   updatedAt: String!
 
