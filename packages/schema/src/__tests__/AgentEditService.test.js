@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertProfileCurrentVersionUnchanged,
   auditModelCandidates,
+  composeSecurityAuditPrompt,
   repairGeneratedCss,
   resolveWebContextForPrompt,
   securityAuditDecision,
@@ -10,6 +11,7 @@ import {
   trustedCapabilityRowsFromHtml,
   validateProfilePatch,
 } from "../AgentEditService.js";
+import { summarizeProfileRisk } from "../ProfileRiskSummary.js";
 import { validateGeneratedPatch } from "../AgentEditSafety.res.js";
 import {
   inspectSvgTrust,
@@ -426,16 +428,27 @@ describe("AgentEditService security audit decision", () => {
     ).toBe(true);
   });
 
-  it("blocks low-confidence audit results", () => {
+  it("allows no-risk audit results above the low-confidence floor", () => {
     const result = securityAuditDecision({
       allow: true,
-      confidence: 0.84,
+      confidence: 0.61,
+      risk: "none",
+      reason: "Purely static markup and styles.",
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("blocks very low-confidence audit results", () => {
+    const result = securityAuditDecision({
+      allow: true,
+      confidence: 0.49,
       risk: "low",
       reason: "Mostly safe, but uncertain.",
     });
 
     expect(result.ok).toBe(false);
-    expect(result.message).toContain("confidence=0.84");
+    expect(result.message).toContain("confidence=0.49");
   });
 
   it("blocks explicit audit denials", () => {
@@ -448,5 +461,99 @@ describe("AgentEditService security audit decision", () => {
 
     expect(result.ok).toBe(false);
     expect(result.message).toContain("Potential script execution");
+  });
+});
+
+describe("summarizeProfileRisk", () => {
+  it("marks static markup with trusted Wikimedia images as clean", () => {
+    const html = [
+      "<main class=\"profile\">",
+      "<section class=\"hero\">",
+      "<h1>Tribute</h1>",
+      "<img src=\"https://upload.wikimedia.org/wikipedia/commons/5/55/50_Cent_2018.jpg\" alt=\"50 Cent\">",
+      "</section>",
+      "</main>",
+    ].join("");
+    const css = ".profile{display:flex}.hero h1{font-size:2rem}";
+
+    const summary = summarizeProfileRisk({ html, css });
+
+    expect(summary.clean).toBe(true);
+    expect(summary.suspiciousSnippets).toEqual([]);
+    expect(summary.trustedImageCount).toBe(0);
+    expect(summary.externalRefs).toContain("https://upload.wikimedia.org");
+  });
+
+  it("flags inline style url() constructs even when origins are trusted", () => {
+    const html = [
+      "<main>",
+      "<div style=\"background:url(https://upload.wikimedia.org/wikipedia/commons/5/55/50_Cent_2018.jpg)\"></div>",
+      "</main>",
+    ].join("");
+    const css = ".profile{color:#fff}";
+
+    const summary = summarizeProfileRisk({ html, css });
+
+    expect(summary.clean).toBe(false);
+    expect(summary.suspiciousSnippets.some((entry) => entry.kind === "inline_style_url")).toBe(true);
+  });
+
+  it("flags CSS url() references and data: URIs", () => {
+    const html = "<main><img src=\"data:image/png;base64,AAAA\"></main>";
+    const css = ".bg{background-image:url(https://example.com/a.png)}";
+
+    const summary = summarizeProfileRisk({ html, css });
+
+    expect(summary.clean).toBe(false);
+    expect(summary.suspiciousSnippets.some((entry) => entry.kind === "data_uri")).toBe(true);
+    expect(summary.suspiciousSnippets.some((entry) => entry.kind === "css_url")).toBe(true);
+  });
+
+  it("flags oversized documents even without suspicious constructs", () => {
+    const html = "<main>" + "a".repeat(45000) + "</main>";
+    const css = "";
+
+    const summary = summarizeProfileRisk({ html, css });
+
+    expect(summary.clean).toBe(false);
+    expect(summary.oversized).toBe(true);
+  });
+});
+
+describe("composeSecurityAuditPrompt", () => {
+  it("does not embed full HTML/CSS source — only flagged snippets and summary metadata", () => {
+    const longHtml = "<main>" + "x".repeat(50000) + "</main>";
+    const longCss = "y".repeat(50000);
+    const riskSummary = {
+      htmlBytes: longHtml.length,
+      cssBytes: longCss.length,
+      inlineSvgCount: 0,
+      trustedImageCount: 0,
+      externalRefs: ["https://upload.wikimedia.org"],
+      oversized: true,
+      suspiciousSnippets: [{ kind: "inline_style_url", excerpt: "style=\"background:url(...)\"" }],
+    };
+
+    const prompt = composeSecurityAuditPrompt(riskSummary);
+
+    expect(prompt).not.toContain(longHtml);
+    expect(prompt).not.toContain(longCss);
+    expect(prompt.length).toBeLessThan(4000);
+    expect(prompt).toContain("inline_style_url");
+    expect(prompt).toContain("Risk summary");
+  });
+
+  it("notes the absence of flagged snippets explicitly", () => {
+    const prompt = composeSecurityAuditPrompt({
+      htmlBytes: 50000,
+      cssBytes: 1000,
+      inlineSvgCount: 0,
+      trustedImageCount: 0,
+      externalRefs: [],
+      oversized: true,
+      suspiciousSnippets: [],
+    });
+
+    expect(prompt).toContain("(none");
   });
 });
