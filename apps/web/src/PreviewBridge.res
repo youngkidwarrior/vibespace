@@ -167,6 +167,8 @@ let buildPreviewDocument = (
   WebCapabilities.trustedFrameCspSourceList ++
   "; base-uri 'none'; form-action 'none'; connect-src 'none'; media-src 'none'; font-src 'none'; script-src 'none';\" />\n" ++
   "  <style>\n" ++
+  "    html, body { height: 100%; margin: 0; }\n" ++
+  "    body { overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain; }\n" ++
   "    " ++ css->CssSource.toString ++ "\n" ++
   "    " ++ WebCapabilities.webCapabilityCss() ++ "\n" ++
   "    " ++ systemFriendsCss ++ "\n" ++
