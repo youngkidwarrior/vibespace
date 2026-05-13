@@ -62,6 +62,32 @@ const profileDocumentPatchFormat = {
   },
 };
 
+const profileTargetedRepairFormat = {
+  type: "json_schema",
+  name: "vibespace_profile_targeted_repair",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      snippet: {
+        type: "string",
+        description:
+          "Replacement HTML fragment for the failing snippet. Keep the same outermost tag. No enclosing parent markup.",
+      },
+      summary: {
+        type: "string",
+        description: "Short user-facing summary of what was fixed.",
+      },
+      warnings: {
+        type: "string",
+        description: "Optional caveats. Empty string if none.",
+      },
+    },
+    required: ["snippet", "summary", "warnings"],
+  },
+};
+
 const profileSecurityAuditFormat = {
   type: "json_schema",
   name: "vibespace_profile_security_audit",
@@ -1854,4 +1880,401 @@ export async function startAgentEdit(input) {
     session: state.session,
     version: undefined,
   };
+}
+
+const targetedRepairContextChars = 200;
+
+function composeTargetedRepairPrompt({ instruction, validationMessage, beforeContext, snippet, afterContext }) {
+  return [
+    "<vibespace_task>",
+    "Repair one specific HTML fragment from a generated Vibespace profile so it passes deterministic validation.",
+    "Return only the corrected fragment as JSON. Do not return a full document.",
+    "</vibespace_task>",
+    "",
+    "<original_user_intent>",
+    String(instruction || "").trim(),
+    "</original_user_intent>",
+    "",
+    "<validation_error>",
+    String(validationMessage || "").trim(),
+    "</validation_error>",
+    "",
+    "<repair_contract>",
+    "Return JSON with snippet, summary, warnings string fields.",
+    "snippet must replace the failing fragment 1:1 and use the same outermost tag.",
+    "Do not include the surrounding parent element. Do not invent unrelated content.",
+    "Do not introduce script, style attributes, event handlers, remote http resources, forms, or aria-label on non-control elements.",
+    "</repair_contract>",
+    "",
+    "<context_before>",
+    String(beforeContext || ""),
+    "</context_before>",
+    "",
+    "<failing_snippet>",
+    String(snippet || ""),
+    "</failing_snippet>",
+    "",
+    "<context_after>",
+    String(afterContext || ""),
+    "</context_after>",
+  ].join("\n");
+}
+
+function parseTargetedRepairJson(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(stripJsonFence(text));
+  } catch {
+    throw new Error("OpenAI returned text instead of the required JSON repair fragment.");
+  }
+  return {
+    snippet: String(parsed?.snippet || ""),
+    summary: String(parsed?.summary || ""),
+    warnings: String(parsed?.warnings || ""),
+  };
+}
+
+async function requestTargetedRepair({ apiKey, prompt, model }) {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      input: [{ role: "user", content: [{ type: "input_text", text: prompt }] }],
+      text: { format: profileTargetedRepairFormat },
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = payload?.error?.message || `OpenAI request failed with HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+
+  const outputText = extractOutputText(payload);
+  if (!outputText) {
+    throw new Error("OpenAI returned no targeted repair content.");
+  }
+
+  return {
+    fragment: parseTargetedRepairJson(outputText),
+    providerConversationId: typeof payload?.id === "string" ? payload.id : undefined,
+  };
+}
+
+function firstTagName(source) {
+  const match = String(source || "").match(/<\s*([A-Za-z][\w:-]*)\b/);
+  return match ? match[1].toLowerCase() : "";
+}
+
+async function loadFailedSessionContext(databaseUrl, sessionId) {
+  return await withClient(databaseUrl, async (client) => {
+    const session = await queryOne(
+      client,
+      `
+        SELECT ${editSessionSelect}
+        FROM vibespace.profile_edit_sessions
+        WHERE id = $1
+      `,
+      [sessionId],
+    );
+    if (!session) {
+      return { error: "Assistant session was not found." };
+    }
+    if (session.status !== "failed") {
+      return { error: "Targeted repair is only available on failed sessions." };
+    }
+    if (!session.failedHtml || !session.failedValidationSpanJson) {
+      return { error: "This failure does not have a precise span to repair." };
+    }
+    const profile = await queryOne(
+      client,
+      `
+        SELECT id, owner_user_id AS "ownerUserId", current_version_id AS "currentVersionId"
+        FROM vibespace.profiles
+        WHERE id = $1
+      `,
+      [session.profileId],
+    );
+    if (!profile) {
+      return { error: "Profile was not found." };
+    }
+    if (!profile.currentVersionId) {
+      return { error: "Profile does not have a current version to repair." };
+    }
+    const currentVersion = await queryOne(
+      client,
+      `
+        SELECT ${profileVersionSelect}
+        FROM vibespace.profile_versions
+        WHERE id = $1
+          AND profile_id = $2
+      `,
+      [profile.currentVersionId, profile.id],
+    );
+    if (!currentVersion) {
+      return { error: "Current profile version was not found." };
+    }
+    return { session, profile, currentVersion };
+  });
+}
+
+export async function runTargetedAgentEditRepair(input) {
+  const databaseUrl = input?.databaseUrl || "";
+  const sessionId = String(input?.sessionId || "").trim();
+  if (!databaseUrl) {
+    return serverFailure("Targeted repair requires a database-backed profile.");
+  }
+  if (!sessionId) {
+    return serverFailure("sessionId is required for targeted repair.");
+  }
+  const apiKey = process.env.OPENAI_API_KEY || "";
+  if (!apiKey) {
+    return serverFailure("OPENAI_API_KEY is not configured for the GraphQL server.");
+  }
+
+  const totalStartedAt = agentEditNow();
+  const loaded = await loadFailedSessionContext(databaseUrl, sessionId);
+  if (loaded?.error) {
+    return serverFailure(loaded.error);
+  }
+
+  const { session, currentVersion } = loaded;
+  let span;
+  try {
+    span = JSON.parse(session.failedValidationSpanJson);
+  } catch {
+    return serverFailure("Stored failure span is malformed.");
+  }
+  const charStart = Number(span?.charStart);
+  const charEnd = Number(span?.charEnd);
+  const failedHtml = String(session.failedHtml || "");
+  if (
+    !(span?.source === "html") ||
+    !Number.isFinite(charStart) ||
+    !Number.isFinite(charEnd) ||
+    charStart < 0 ||
+    charEnd <= charStart ||
+    charEnd > failedHtml.length
+  ) {
+    return serverFailure("Failure span is not within the failed HTML.");
+  }
+
+  const beforeContext = failedHtml.slice(Math.max(0, charStart - targetedRepairContextChars), charStart);
+  const snippet = failedHtml.slice(charStart, charEnd);
+  const afterContext = failedHtml.slice(
+    charEnd,
+    Math.min(failedHtml.length, charEnd + targetedRepairContextChars),
+  );
+  const expectedTag = firstTagName(snippet);
+
+  const model = process.env.OPENAI_FAST_MODEL || "gpt-5.4-nano";
+  let providerConversationId;
+  let state = {
+    session: { id: session.id },
+    currentVersion,
+  };
+
+  const updateFailureWithSpan = async (errorMessage, newPatch) => {
+    const replacement = newPatch
+      ? {
+          failedHtml: newPatch.html || null,
+          failedCss: newPatch.css || null,
+          failedValidationMessage: errorMessage,
+        }
+      : {
+          failedHtml: failedHtml,
+          failedCss: session.failedCss || null,
+          failedValidationMessage: errorMessage,
+        };
+    const failedValidationSpan = newPatch
+      ? locateValidationProblem({
+          html: newPatch.html || "",
+          css: newPatch.css || "",
+          message: errorMessage,
+        })
+      : span;
+    return await updateSessionFailure(databaseUrl, session.id, {
+      summary: "Targeted repair did not apply.",
+      warnings: [],
+      error: errorMessage,
+      progressPhase: "validating",
+      failedHtml: replacement.failedHtml,
+      failedCss: replacement.failedCss,
+      failedValidationMessage: replacement.failedValidationMessage,
+      failedValidationSpan,
+    });
+  };
+
+  try {
+    const generationStartedAt = agentEditNow();
+    const repairPrompt = composeTargetedRepairPrompt({
+      instruction: session.prompt,
+      validationMessage: session.failedValidationMessage || session.error,
+      beforeContext,
+      snippet,
+      afterContext,
+    });
+    const repairResult = await requestTargetedRepair({ apiKey, prompt: repairPrompt, model });
+    providerConversationId = repairResult.providerConversationId;
+    logAgentEditPhase("targeted_generation", {
+      sessionId,
+      elapsedMs: agentEditNow() - generationStartedAt,
+      promptBytes: Buffer.byteLength(repairPrompt, "utf8"),
+      snippetBytes: Buffer.byteLength(repairResult.fragment.snippet, "utf8"),
+      model,
+    });
+
+    const replacementTag = firstTagName(repairResult.fragment.snippet);
+    if (!repairResult.fragment.snippet || (expectedTag && replacementTag !== expectedTag)) {
+      const message =
+        "Targeted repair returned a fragment with a different outermost tag than the failing snippet.";
+      const failureSession = await updateFailureWithSpan(message);
+      logAgentEditPhase("total", {
+        sessionId,
+        elapsedMs: agentEditNow() - totalStartedAt,
+        outcome: "targeted_shape_rejected",
+        error: message,
+      });
+      return serverFailure(message, {
+        summary: "Targeted repair rejected.",
+        warnings: [],
+        validationErrors: [message],
+        session: failureSession,
+        providerConversationId,
+      });
+    }
+
+    const splicedHtml =
+      failedHtml.slice(0, charStart) + repairResult.fragment.snippet + failedHtml.slice(charEnd);
+    let patch = withGeneratedRepairs({
+      html: splicedHtml,
+      css: session.failedCss || "",
+      summary: repairResult.fragment.summary || "Targeted repair applied.",
+      warnings: repairResult.fragment.warnings || "",
+    });
+
+    const validationStartedAt = agentEditNow();
+    const validationMessage = await validateProfilePatch(patch, {
+      currentHtml: currentVersion.html,
+      webContext: {},
+    });
+    logAgentEditPhase("targeted_validation", {
+      sessionId,
+      elapsedMs: agentEditNow() - validationStartedAt,
+      passed: !validationMessage,
+      error: validationMessage || undefined,
+    });
+    if (validationMessage) {
+      const failureSession = await updateFailureWithSpan(validationMessage, patch);
+      logAgentEditPhase("total", {
+        sessionId,
+        elapsedMs: agentEditNow() - totalStartedAt,
+        outcome: "targeted_validation_failed",
+        error: validationMessage,
+      });
+      return serverFailure(validationMessage, {
+        summary: "Targeted repair failed validation.",
+        warnings: warningArray(patch.warnings),
+        validationErrors: [validationMessage],
+        session: failureSession,
+        providerConversationId,
+      });
+    }
+
+    const validatedPatch = validatedGeneratedPatch(patch, validationMessage);
+    const riskSummary = summarizeProfileRisk(validatedPatch);
+    if (!riskSummary.clean) {
+      const auditStartedAt = agentEditNow();
+      const { audit, model: auditModel } = await requestProfileSecurityAuditWithFallback({
+        apiKey,
+        riskSummary,
+      });
+      const decision = securityAuditDecision(audit);
+      logAgentEditPhase("targeted_audit", {
+        sessionId,
+        elapsedMs: agentEditNow() - auditStartedAt,
+        skipped: false,
+        model: auditModel,
+        allow: decision.audit.allow,
+        risk: decision.audit.risk,
+        confidence: decision.audit.confidence,
+        ok: decision.ok,
+      });
+      if (!decision.ok) {
+        const failureSession = await updateFailureWithSpan(decision.message, validatedPatch);
+        logAgentEditPhase("total", {
+          sessionId,
+          elapsedMs: agentEditNow() - totalStartedAt,
+          outcome: "targeted_audit_blocked",
+          error: decision.message,
+        });
+        return serverFailure(decision.message, {
+          summary: "Targeted repair failed security audit.",
+          warnings: warningArray(validatedPatch.warnings),
+          validationErrors: [decision.message],
+          session: failureSession,
+          providerConversationId,
+        });
+      }
+    } else {
+      logAgentEditPhase("targeted_audit", { sessionId, elapsedMs: 0, skipped: true });
+    }
+
+    const persistStartedAt = agentEditNow();
+    const persisted = await persistAppliedPatch(
+      databaseUrl,
+      {
+        profileId: session.profileId,
+        prompt: session.prompt,
+        profileName: input?.profileName,
+        sendtag: input?.sendtag,
+      },
+      state,
+      validatedPatch,
+      providerConversationId,
+      model,
+      undefined,
+    );
+    logAgentEditPhase("persistence", {
+      sessionId,
+      elapsedMs: agentEditNow() - persistStartedAt,
+      targeted: true,
+    });
+
+    logAgentEditPhase("total", {
+      sessionId,
+      elapsedMs: agentEditNow() - totalStartedAt,
+      outcome: "ok",
+      targeted: true,
+    });
+
+    return {
+      ok: true,
+      summary: validatedPatch.summary,
+      warnings: persisted.warnings,
+      validationErrors: [],
+      error: undefined,
+      providerConversationId,
+      session: persisted.session,
+      version: persisted.version,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Targeted repair failed.";
+    logAgentEditPhase("total", {
+      sessionId,
+      elapsedMs: agentEditNow() - totalStartedAt,
+      outcome: "error",
+      phase: "targeted",
+      error: message,
+    });
+    const failureSession = await updateFailureWithSpan(message).catch(() => undefined);
+    return serverFailure(message, {
+      session: failureSession,
+      providerConversationId,
+    });
+  }
 }

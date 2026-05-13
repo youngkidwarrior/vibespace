@@ -329,6 +329,20 @@ and input_RedeemInviteInput_nullable = {
 }
 
 @live
+and input_RequestTargetedAgentEditRepairInput = {
+  editSessionId: string,
+  profileName?: string,
+  sendtag?: string,
+}
+
+@live
+and input_RequestTargetedAgentEditRepairInput_nullable = {
+  editSessionId: string,
+  profileName?: Null.t<string>,
+  sendtag?: Null.t<string>,
+}
+
+@live
 and input_RestoreProfileVersionInput = {
   profileId: string,
   versionId: string,

@@ -6,6 +6,7 @@ import {
   repairGeneratedCss,
   repairGeneratedHtml,
   resolveWebContextForPrompt,
+  runTargetedAgentEditRepair,
   securityAuditDecision,
   shouldPersistSendtag,
   startAgentEdit,
@@ -583,6 +584,39 @@ describe("composeSecurityAuditPrompt", () => {
     });
 
     expect(prompt).toContain("(none");
+  });
+});
+
+describe("runTargetedAgentEditRepair input guards", () => {
+  it("rejects when sessionId is missing", async () => {
+    const result = await runTargetedAgentEditRepair({ databaseUrl: "postgres://x", sessionId: "" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("sessionId");
+  });
+
+  it("rejects when databaseUrl is missing", async () => {
+    const result = await runTargetedAgentEditRepair({ databaseUrl: "", sessionId: "abc" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("database");
+  });
+
+  it("rejects when OPENAI_API_KEY is unset", async () => {
+    const previous = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    try {
+      const result = await runTargetedAgentEditRepair({
+        databaseUrl: "postgres://x",
+        sessionId: "abc",
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("OPENAI_API_KEY");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previous;
+      }
+    }
   });
 });
 

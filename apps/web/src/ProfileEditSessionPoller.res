@@ -134,6 +134,7 @@ module Result = {
     switch data.profileEditSessionById {
     | Some(session) if session.status == FAILED =>
       <FailedPatchPanel
+        sessionId={session.id}
         failedHtml=session.failedHtml
         failedCss=session.failedCss
         failedValidationMessage=session.failedValidationMessage

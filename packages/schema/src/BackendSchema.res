@@ -384,6 +384,13 @@ type submitAgentEditInput = {
 }
 
 @gql.inputObject
+type requestTargetedAgentEditRepairInput = {
+  editSessionId: ResGraph.id,
+  profileName?: string,
+  sendtag?: string,
+}
+
+@gql.inputObject
 type cancelProfileEditSessionInput = {editSessionId: ResGraph.id}
 
 @gql.inputObject
@@ -556,6 +563,11 @@ type startAgentEditResult =
 type cancelProfileEditSessionResult =
   | CancelProfileEditSessionSucceeded(profileEditSessionMutationSucceeded)
   | CancelProfileEditSessionFailed(profileEditSessionMutationFailed)
+
+@gql.union
+type requestTargetedAgentEditRepairResult =
+  | RequestTargetedAgentEditRepairSucceeded(profileEditSessionMutationSucceeded)
+  | RequestTargetedAgentEditRepairFailed(profileEditSessionMutationFailed)
 
 @gql.union
 type disableUserResult =
@@ -1295,6 +1307,19 @@ type agentServiceResult = {
 @module("./AgentEditService.js") external startAgentEditOnServer: agentServiceInput => promise<
   agentServiceResult,
 > = "startAgentEdit"
+
+type targetedAgentEditRepairInput = {
+  databaseUrl: string,
+  sessionId: string,
+  actorUserId: string,
+  profileName: Nullable.t<string>,
+  sendtag: Nullable.t<string>,
+}
+
+@module("./AgentEditService.js")
+external runTargetedAgentEditRepairOnServer: targetedAgentEditRepairInput => promise<
+  agentServiceResult,
+> = "runTargetedAgentEditRepair"
 
 @module("./SendProfileLookup.js")
 external normalizeSendtagOnServer: string => string = "normalizeSendtag"
@@ -4259,6 +4284,94 @@ let cancelProfileEditSession = async (
       ~validationErrors=[],
       ~error="Edit session cancellation requires a database-backed profile.",
     ))
+  }
+
+/** Run a user-initiated targeted repair against a failed assistant edit session. */
+@live @gql.field
+let requestTargetedAgentEditRepair = async (
+  _: mutation,
+  ~input: requestTargetedAgentEditRepairInput,
+  ~ctx: ResGraphContext.context,
+): requestTargetedAgentEditRepairResult =>
+  switch ctx.databaseUrl {
+  | None =>
+    RequestTargetedAgentEditRepairFailed(profileEditSessionFailure(
+      ~summary="Targeted repair was not started.",
+      ~validationErrors=[],
+      ~error="Assistant changes require a database-backed profile.",
+    ))
+  | Some(databaseUrl) =>
+    switch await loadProfileEditSessionById(ctx, input.editSessionId) {
+    | None =>
+      RequestTargetedAgentEditRepairFailed(profileEditSessionFailure(
+        ~summary="Targeted repair was not started.",
+        ~validationErrors=[],
+        ~error="Edit session was not found.",
+      ))
+    | Some(existingSession) =>
+      switch await loadProfileById(ctx, existingSession.profileId) {
+      | None =>
+        RequestTargetedAgentEditRepairFailed(profileEditSessionFailure(
+          ~summary="Targeted repair was not started.",
+          ~validationErrors=[],
+          ~error="Profile was not found.",
+        ))
+      | Some(profile) =>
+        switch await profileWriteActorIdForViewer(ctx, profile) {
+        | None =>
+          RequestTargetedAgentEditRepairFailed(profileEditSessionFailure(
+            ~summary="Targeted repair was not authorized.",
+            ~validationErrors=[],
+            ~error=profileWriteAuthError,
+          ))
+        | Some(actorUserId) =>
+          let result = await runTargetedAgentEditRepairOnServer({
+            databaseUrl,
+            sessionId: existingSession.id->ResGraph.idToString,
+            actorUserId,
+            profileName: input.profileName->Nullable.fromOption,
+            sendtag: input.sendtag->Nullable.fromOption,
+          })
+          let editSession = result.session->Option.map(profileEditSessionFromAgentService)
+          let resultVersionId = switch editSession {
+          | Some(session) => session.resultVersionId
+          | None => None
+          }
+          if result.ok {
+            switch editSession {
+            | Some(editSession) =>
+              RequestTargetedAgentEditRepairSucceeded(profileEditSessionSuccess(
+                ~editSession,
+                ~providerConversationId=result.providerConversationId,
+                ~resultVersionId,
+                ~summary=result.summary,
+                ~warnings=result.warnings,
+                ~validationErrors=result.validationErrors,
+              ))
+            | None =>
+              RequestTargetedAgentEditRepairFailed(profileEditSessionFailure(
+                ~providerConversationId=?result.providerConversationId,
+                ~resultVersionId=?resultVersionId,
+                ~summary=result.summary,
+                ~warnings=result.warnings,
+                ~validationErrors=result.validationErrors,
+                ~error=result.error->Option.getOr("Targeted repair did not return an edit session."),
+              ))
+            }
+          } else {
+            RequestTargetedAgentEditRepairFailed(profileEditSessionFailure(
+              ~editSession=?editSession,
+              ~providerConversationId=?result.providerConversationId,
+              ~resultVersionId=?resultVersionId,
+              ~summary=result.summary,
+              ~warnings=result.warnings,
+              ~validationErrors=result.validationErrors,
+              ~error=result.error->Option.getOr("Targeted repair failed."),
+            ))
+          }
+        }
+      }
+    }
   }
 
 /** Reactivate the invite code the current viewer used by disabling the viewer account. */
