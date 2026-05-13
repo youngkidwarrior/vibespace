@@ -167,8 +167,6 @@ let buildPreviewDocument = (
   WebCapabilities.trustedFrameCspSourceList ++
   "; base-uri 'none'; form-action 'none'; connect-src 'none'; media-src 'none'; font-src 'none'; script-src 'none';\" />\n" ++
   "  <style>\n" ++
-  "    html, body { height: 100%; margin: 0; }\n" ++
-  "    body { overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain; }\n" ++
   "    " ++ css->CssSource.toString ++ "\n" ++
   "    " ++ WebCapabilities.webCapabilityCss() ++ "\n" ++
   "    " ++ systemFriendsCss ++ "\n" ++
@@ -176,6 +174,8 @@ let buildPreviewDocument = (
   "    [data-vibespace-hover=\"true\"] { outline: 2px dashed #38f8ff !important; outline-offset: 4px; box-shadow: 0 0 0 2px rgba(0,0,0,.92), 0 0 0 5px rgba(255,255,255,.94), 0 0 18px rgba(56,248,255,.86) !important; }\n" ++
   "    @media (pointer: fine) { [data-vibespace-hover=\"true\"] { cursor: crosshair; } }\n" ++
   "    [data-vibespace-selected=\"true\"] { outline: 3px solid #f8ff38 !important; outline-offset: 5px; box-shadow: 0 0 0 2px rgba(0,0,0,.92), 0 0 0 6px rgba(255,255,255,.94), 0 0 24px rgba(248,255,56,.9) !important; }\n" ++
+  "    html { height: 100% !important; margin: 0 !important; }\n" ++
+  "    body { height: 100% !important; margin: 0 !important; overflow: auto !important; -webkit-overflow-scrolling: touch !important; touch-action: pan-y !important; overscroll-behavior: contain !important; }\n" ++
   "  </style>\n" ++
   "</head>\n" ++
   "<body data-vibespace-edit-mode=\"" ++ editMode ++ "\" data-vibespace-selected-id=\"" ++

@@ -594,11 +594,21 @@ function urlMessage() {
   return "Profile look cannot load URL resources.";
 }
 
+const documentRootSelectorNames = new Set(["html", "body"]);
+
 function selectorMessage(selector) {
-  const hasNesting = Array.isArray(selector)
-    ? selector.some((part) => part?.type === "nesting")
-    : false;
-  return hasNesting ? "Profile look should avoid CSS nesting for browser compatibility." : "";
+  if (!Array.isArray(selector)) return "";
+  if (selector.some((part) => part?.type === "nesting")) {
+    return "Profile look should avoid CSS nesting for browser compatibility.";
+  }
+  const rootMatch = selector.find(
+    (part) => part?.type === "type" && documentRootSelectorNames.has(String(part?.name || "").toLowerCase()),
+  );
+  if (rootMatch) {
+    const name = String(rootMatch.name || "").toLowerCase();
+    return `Profile look cannot target <${name}> directly. The editor host owns html/body styling so iframe scrolling stays correct on mobile.`;
+  }
+  return "";
 }
 
 function functionMessage(fn) {
