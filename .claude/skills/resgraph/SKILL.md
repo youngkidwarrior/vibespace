@@ -32,15 +32,13 @@ In Vibespace, the active setup is:
 Do not hand-edit generated files. Change source `.res` files, run ReScript, run
 ResGraph, then inspect generated output.
 
-## Reference Map
+## References (on-demand)
 
-Load only the focused reference needed for the task:
+Detailed references are kept out of the skill load path at:
+`/Users/vic/Documents/vibespace/references/resgraph/`
 
-- `references/tooling.md`: commands, LSP/watch workflow, `find-definition`, generated output, validation chain.
-- `references/schema-authoring.md`: resolver annotations, schema comments, project structure, circular dependencies, interfaces, generated files.
-- `references/input-objects.md`: `@gql.inputObject`, optional fields, ResGraph.id, when to use vs labeled args, FFI helper types.
-- `references/pagination.md`: connection object types, `connectionFromArray`, stable cursors, and profile-version history guidance.
-- `references/unions-errors-as-data.md`: explicit unions, inferred unions, errors-as-data mutation results, exhaustive switches, Relay SDL caveats.
+Read a file from there only when you have already engaged this skill and need
+that specific topic. Do not auto-load.
 
 ## Default Validation
 
@@ -63,6 +61,7 @@ Add focused reference files as these patterns become proven in working code:
 - Enums
 - Interfaces
 - Custom Scalars
+- Input Objects
 - Input Unions
 - Query
 - Mutations
