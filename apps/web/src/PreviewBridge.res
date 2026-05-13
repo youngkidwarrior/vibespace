@@ -171,7 +171,8 @@ let buildPreviewDocument = (
   "    " ++ WebCapabilities.webCapabilityCss() ++ "\n" ++
   "    " ++ systemFriendsCss ++ "\n" ++
   "    " ++ systemOwnerImageCss ++ "\n" ++
-  "    [data-vibespace-hover=\"true\"] { outline: 2px dashed #38f8ff !important; outline-offset: 4px; box-shadow: 0 0 0 2px rgba(0,0,0,.92), 0 0 0 5px rgba(255,255,255,.94), 0 0 18px rgba(56,248,255,.86) !important; cursor: crosshair; }\n" ++
+  "    [data-vibespace-hover=\"true\"] { outline: 2px dashed #38f8ff !important; outline-offset: 4px; box-shadow: 0 0 0 2px rgba(0,0,0,.92), 0 0 0 5px rgba(255,255,255,.94), 0 0 18px rgba(56,248,255,.86) !important; }\n" ++
+  "    @media (pointer: fine) { [data-vibespace-hover=\"true\"] { cursor: crosshair; } }\n" ++
   "    [data-vibespace-selected=\"true\"] { outline: 3px solid #f8ff38 !important; outline-offset: 5px; box-shadow: 0 0 0 2px rgba(0,0,0,.92), 0 0 0 6px rgba(255,255,255,.94), 0 0 24px rgba(248,255,56,.9) !important; }\n" ++
   "  </style>\n" ++
   "</head>\n" ++

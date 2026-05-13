@@ -425,10 +425,10 @@ let attachToIframe = (
         removeOverlay(overlayRef)
       }
 
-      let mouseOver = (event: UiEventsTypes.mouseEvent) => {
+      let highlightAt = (target: option<DomTypes.element>) => {
         if startRef.contents->Option.isNone {
           clearHover(frameDocument)
-          switch event.target->Null.toOption->Option.map(eventTargetToElement) {
+          switch target {
           | Some(target) =>
             switch closestVibespaceElement(target) {
             | Some(target) =>
@@ -440,6 +440,12 @@ let attachToIframe = (
         }
       }
 
+      let mouseOver = (event: UiEventsTypes.mouseEvent) =>
+        highlightAt(event.target->Null.toOption->Option.map(eventTargetToElement))
+
+      let pointerHover = (event: UiEventsTypes.pointerEvent) =>
+        highlightAt(event.target->Null.toOption->Option.map(eventTargetToElement))
+
       let pointerDown = (event: UiEventsTypes.pointerEvent) => {
         if event.button == 0 {
           switch event.target->Null.toOption->Option.map(eventTargetToElement) {
@@ -449,15 +455,21 @@ let attachToIframe = (
               y: event.clientY->Int.toFloat,
               target,
             })
-            try {
-              Element.setPointerCapture(target, event.pointerId)
-            } catch {
-            | _ => ()
-            }
             movedRef.contents = false
-            clearHover(frameDocument)
-            PointerEvent.preventDefault(event)
-            PointerEvent.stopPropagation(event)
+            switch closestVibespaceElement(target) {
+            | Some(hoverTarget) =>
+              clearHover(frameDocument)
+              Element.setAttribute(
+                hoverTarget,
+                ~qualifiedName="data-vibespace-hover",
+                ~value="true",
+              )
+            | None => clearHover(frameDocument)
+            }
+            // Do not preventDefault here. On touch this would suppress the
+            // platform long-press text-selection gesture before we know whether
+            // the user is dragging or holding. preventDefault moves to
+            // pointerMove once we detect real movement.
           | None => ()
           }
         }
@@ -473,14 +485,26 @@ let attachToIframe = (
             event.clientY->Int.toFloat,
           )
           if rect.width > 4.0 || rect.height > 4.0 {
-            movedRef.contents = true
+            if !movedRef.contents {
+              movedRef.contents = true
+              try {
+                Element.setPointerCapture(start.target, event.pointerId)
+              } catch {
+              | _ => ()
+              }
+            }
             updateOverlay(frameDocument, overlayRef, rect)
+            // Only block default behavior once we are confidently dragging an
+            // area. This keeps the OS long-press text-selection gesture alive
+            // for stationary touches.
+            PointerEvent.preventDefault(event)
+            PointerEvent.stopPropagation(event)
           }
-          PointerEvent.preventDefault(event)
-          PointerEvent.stopPropagation(event)
         | None => ()
         }
       }
+
+      let pickedRef = ref(false)
 
       let pointerUp = (event: UiEventsTypes.pointerEvent) => {
         switch startRef.contents {
@@ -493,6 +517,7 @@ let attachToIframe = (
           )
           startRef.contents = None
           removeOverlay(overlayRef)
+          pickedRef.contents = false
 
           if movedRef.contents && rect.width > 6.0 && rect.height > 6.0 {
             let requestId = nextRequestId()
@@ -510,6 +535,9 @@ let attachToIframe = (
               selectedElements
             }
             callback(payloadFromArea(requestId, frameWindow, rect, nearest, selectedElements))
+            pickedRef.contents = true
+            PointerEvent.preventDefault(event)
+            PointerEvent.stopPropagation(event)
           } else {
             let target = switch closestVibespaceElement(start.target) {
             | Some(target) => target
@@ -519,26 +547,37 @@ let attachToIframe = (
             | Some(context) =>
               Element.setAttribute(target, ~qualifiedName="data-vibespace-selected", ~value="true")
               callback(payloadFromElement(nextRequestId(), context))
+              pickedRef.contents = true
+              PointerEvent.preventDefault(event)
+              PointerEvent.stopPropagation(event)
             | None => ()
             }
           }
 
           movedRef.contents = false
-          PointerEvent.preventDefault(event)
-          PointerEvent.stopPropagation(event)
         | None => ()
         }
       }
 
-      let pointerCancel = (_event: UiEventsTypes.pointerEvent) => cancelDraft()
+      let pointerCancel = (_event: UiEventsTypes.pointerEvent) => {
+        cancelDraft()
+        clearHover(frameDocument)
+      }
 
       let click = (event: EventTypes.event) => {
-        Event.preventDefault(event)
-        Event.stopPropagation(event)
+        // Only suppress the synthesized click when we just handled a selection
+        // gesture; let unrelated clicks (e.g. the OS dismissing the
+        // text-selection magnifier) pass through.
+        if pickedRef.contents {
+          pickedRef.contents = false
+          Event.preventDefault(event)
+          Event.stopPropagation(event)
+        }
       }
 
       Document.addEventListener(frameDocument, Mouseover, mouseOver)
       Document.addEventListener(frameDocument, Mouseout, _event => clearHover(frameDocument))
+      Document.addEventListener(frameDocument, Pointerover, pointerHover)
       let captureOptions: EventTypes.addEventListenerOptions = {capture: true}
       Document.addEventListener(frameDocument, Pointerdown, pointerDown, ~options=captureOptions)
       Document.addEventListener(frameDocument, Pointermove, pointerMove, ~options=captureOptions)
