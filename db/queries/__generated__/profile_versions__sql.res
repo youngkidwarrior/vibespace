@@ -3674,7 +3674,7 @@ type cancelProfileEditSessionQuery = {
   result: cancelProfileEditSessionResult,
 }
 
-%%private(let cancelProfileEditSessionIR: IR.t = %raw(`{"usedParamSet":{"id":true},"params":[{"name":"id","required":true,"transform":{"type":"scalar"},"locs":[{"a":169,"b":172}]}],"statement":"UPDATE vibespace.profile_edit_sessions pes\nSET\n  status = 'canceled',\n  progress_phase = 'preparing',\n  error = 'Canceled by user.',\n  updated_at = now()\nWHERE pes.id = :id!\nRETURNING\n  pes.id AS \"id\",\n  pes.profile_id AS \"profileId\",\n  pes.user_id AS \"userId\",\n  pes.provider_conversation_id AS \"providerConversationId\",\n  pes.status AS \"status\",\n  pes.progress_phase AS \"progressPhase\",\n  pes.prompt AS \"prompt\",\n  pes.selection_snapshot_id AS \"selectionSnapshotId\",\n  pes.result_version_id AS \"resultVersionId\",\n  pes.summary AS \"summary\",\n  pes.warnings::text AS \"warningsJson\",\n  pes.error AS \"error\",\n  pes.failed_html AS \"failedHtml\",\n  pes.failed_css AS \"failedCss\",\n  pes.failed_validation_message AS \"failedValidationMessage\",\n  pes.failed_validation_span::text AS \"failedValidationSpanJson\",\n  pes.created_at::text AS \"createdAt\",\n  pes.updated_at::text AS \"updatedAt\""}`))
+%%private(let cancelProfileEditSessionIR: IR.t = %raw(`{"usedParamSet":{"id":true},"params":[{"name":"id","required":true,"transform":{"type":"scalar"},"locs":[{"a":281,"b":284}]}],"statement":"UPDATE vibespace.profile_edit_sessions pes\nSET\n  status = 'canceled',\n  progress_phase = 'preparing',\n  error = 'Canceled by user.',\n  failed_html = NULL,\n  failed_css = NULL,\n  failed_validation_message = NULL,\n  failed_validation_span = NULL,\n  updated_at = now()\nWHERE pes.id = :id!\nRETURNING\n  pes.id AS \"id\",\n  pes.profile_id AS \"profileId\",\n  pes.user_id AS \"userId\",\n  pes.provider_conversation_id AS \"providerConversationId\",\n  pes.status AS \"status\",\n  pes.progress_phase AS \"progressPhase\",\n  pes.prompt AS \"prompt\",\n  pes.selection_snapshot_id AS \"selectionSnapshotId\",\n  pes.result_version_id AS \"resultVersionId\",\n  pes.summary AS \"summary\",\n  pes.warnings::text AS \"warningsJson\",\n  pes.error AS \"error\",\n  pes.failed_html AS \"failedHtml\",\n  pes.failed_css AS \"failedCss\",\n  pes.failed_validation_message AS \"failedValidationMessage\",\n  pes.failed_validation_span::text AS \"failedValidationSpanJson\",\n  pes.created_at::text AS \"createdAt\",\n  pes.updated_at::text AS \"updatedAt\""}`))
 
 /**
  Runnable query:
@@ -3684,6 +3684,10 @@ SET
   status = 'canceled',
   progress_phase = 'preparing',
   error = 'Canceled by user.',
+  failed_html = NULL,
+  failed_css = NULL,
+  failed_validation_message = NULL,
+  failed_validation_span = NULL,
   updated_at = now()
 WHERE pes.id = $1
 RETURNING

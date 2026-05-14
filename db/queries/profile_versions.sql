@@ -867,6 +867,10 @@ SET
   status = 'canceled',
   progress_phase = 'preparing',
   error = 'Canceled by user.',
+  failed_html = NULL,
+  failed_css = NULL,
+  failed_validation_message = NULL,
+  failed_validation_span = NULL,
   updated_at = now()
 WHERE pes.id = :id!
 RETURNING
